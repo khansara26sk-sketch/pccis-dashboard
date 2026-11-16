@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import PreprocessingStatus
+from app.models.enums import OCRStatus, PreprocessingStatus
 
 
 class EvidenceRead(BaseModel):
@@ -21,7 +21,10 @@ class EvidenceRead(BaseModel):
     sha256: str | None = Field(description="SHA-256 of the original upload")
     uploaded_at: datetime
     preprocessing_status: PreprocessingStatus
+    
     preprocessing_error: str | None
+    ocr_status: OCRStatus
+    ocr_error: str | None
     preprocessing_report: dict[str, Any] | None = Field(
         description="Which preprocessing steps were applied, and with what values"
     )

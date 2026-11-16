@@ -1,4 +1,6 @@
-"""Evidence upload and preprocessing workflow: validate, store original, record, preprocess."""
+
+"""Evidence upload and preprocessing workflow: validate, store original, record, preprocess and OCR."""
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
@@ -7,7 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import ImageEvidence, Inspection, InspectionStatus, PreprocessingStatus, User
+from app.models import (
+    ExtractedField,
+    ImageEvidence,
+    Inspection,
+    InspectionStatus,
+    OCRStatus,
+    PreprocessingStatus,
+    User,
+)
 from app.services.audit_service import record_event
 from app.services.image_service import (
     InvalidImageContent,
@@ -17,6 +27,7 @@ from app.services.image_service import (
     preprocess_image,
     validate_image_bytes,
 )
+from app.services.ocr_service import OCRProcessingError, extract_text
 from app.services.storage_service import (
     StorageError,
     delete_quietly,
@@ -45,25 +56,36 @@ def read_limited(fileobj: BinaryIO, max_bytes: int) -> bytes:
     """Read an upload but stop as soon as it exceeds the limit."""
     chunks: list[bytes] = []
     total = 0
+
     while True:
         chunk = fileobj.read(READ_CHUNK_BYTES)
         if not chunk:
             break
+
         total += len(chunk)
         if total > max_bytes:
             raise FileTooLarge()
+
         chunks.append(chunk)
+
     return b"".join(chunks)
 
 
-def get_evidence(db: Session, inspection: Inspection, evidence_id: int) -> ImageEvidence:
+def get_evidence(
+    db: Session,
+    inspection: Inspection,
+    evidence_id: int,
+) -> ImageEvidence:
     evidence = db.scalar(
         select(ImageEvidence).where(
-            ImageEvidence.id == evidence_id, ImageEvidence.inspection_id == inspection.id
+            ImageEvidence.id == evidence_id,
+            ImageEvidence.inspection_id == inspection.id,
         )
     )
+
     if evidence is None:
         raise EvidenceNotFound()
+
     return evidence
 
 
@@ -81,12 +103,98 @@ def original_path(settings: Settings, evidence: ImageEvidence) -> Path:
     return safe_join(settings.originals_dir, evidence.stored_filename)
 
 
-def processed_path(settings: Settings, evidence: ImageEvidence) -> Path | None:
+def processed_path(
+    settings: Settings,
+    evidence: ImageEvidence,
+) -> Path | None:
     if evidence.preprocessing_status != PreprocessingStatus.COMPLETED:
         return None
+
     if not evidence.processed_stored_filename:
         return None
-    return safe_join(settings.processed_dir, evidence.processed_stored_filename)
+
+    return safe_join(
+        settings.processed_dir,
+        evidence.processed_stored_filename,
+    )
+
+
+def run_ocr(
+    db: Session,
+    *,
+    settings: Settings,
+    evidence: ImageEvidence,
+    user: User,
+    image_path: Path,
+) -> None:
+    """Extract text from the processed image and save its OCR result."""
+
+    evidence.ocr_status = OCRStatus.PENDING
+    evidence.ocr_error = None
+
+    record_event(
+        db,
+        user_id=user.id,
+        inspection_id=evidence.inspection_id,
+        action="evidence.ocr_started",
+        details={"evidence_id": evidence.id},
+    )
+    db.commit()
+
+    try:
+        result = extract_text(image_path, settings)
+    except OCRProcessingError:
+        evidence.ocr_status = OCRStatus.FAILED
+        evidence.ocr_error = "OCR processing failed"
+
+        record_event(
+            db,
+            user_id=user.id,
+            inspection_id=evidence.inspection_id,
+            action="evidence.ocr_failed",
+            details={
+                "evidence_id": evidence.id,
+                "error": evidence.ocr_error,
+            },
+        )
+        db.commit()
+        return
+
+    extracted_field = db.scalar(
+        select(ExtractedField).where(
+            ExtractedField.evidence_id == evidence.id,
+            ExtractedField.field_name == "ocr_text",
+        )
+    )
+
+    if extracted_field is None:
+        extracted_field = ExtractedField(
+            inspection_id=evidence.inspection_id,
+            evidence_id=evidence.id,
+            field_name="ocr_text",
+        )
+        db.add(extracted_field)
+
+    extracted_field.extracted_value = result.text
+    extracted_field.source_text = result.text
+    extracted_field.confidence = result.confidence
+
+    evidence.ocr_status = OCRStatus.COMPLETED
+    evidence.ocr_error = None
+
+    record_event(
+        db,
+        user_id=user.id,
+        inspection_id=evidence.inspection_id,
+        action="evidence.ocr_completed",
+        details={
+            "evidence_id": evidence.id,
+            "character_count": len(result.text),
+            "confidence": result.confidence,
+        },
+    )
+
+    db.commit()
 
 
 def upload_evidence(
@@ -100,7 +208,7 @@ def upload_evidence(
     fileobj: BinaryIO,
 ) -> ImageEvidence:
     def reject(reason: str, error: Exception):
-        # Audit details carry only a reason code: never the client's filename or file contents.
+        # Audit details carry only a reason code.
         record_event(
             db,
             user_id=user.id,
@@ -116,12 +224,18 @@ def upload_evidence(
             ImageEvidence.inspection_id == inspection.id
         )
     )
+
     if (existing or 0) >= settings.max_images_per_inspection:
         reject("limit_reached", EvidenceLimitReached())
 
     display_name = sanitize_display_filename(filename)
+
     try:
-        declared_format = check_declared_type(display_name, content_type, settings.allowed_image_formats)
+        declared_format = check_declared_type(
+            display_name,
+            content_type,
+            settings.allowed_image_formats,
+        )
     except UnsupportedImageType as exc:
         reject("unsupported_type", exc)
 
@@ -141,7 +255,13 @@ def upload_evidence(
         reject("invalid_content", exc)
 
     stored_name = new_stored_filename(info.stored_ext)
-    stored_path = write_new_file(settings.originals_dir, stored_name, data)  # original, byte-for-byte
+
+    stored_path = write_new_file(
+        settings.originals_dir,
+        stored_name,
+        data,
+    )
+
     evidence = ImageEvidence(
         inspection_id=inspection.id,
         original_filename=display_name,
@@ -153,10 +273,13 @@ def upload_evidence(
         height=info.height,
         sha256=info.sha256,
         preprocessing_status=PreprocessingStatus.PENDING,
+        ocr_status=OCRStatus.PENDING,
     )
+
     try:
         db.add(evidence)
         db.flush()
+
         record_event(
             db,
             user_id=user.id,
@@ -169,38 +292,61 @@ def upload_evidence(
                 "sha256": info.sha256,
             },
         )
+
         if inspection.status == InspectionStatus.DRAFT:
             inspection.status = InspectionStatus.IMAGE_UPLOADED
+
         db.commit()
+
     except Exception:
         db.rollback()
-        delete_quietly(stored_path)  # don't leave an orphan file without a database row
+        delete_quietly(stored_path)
         raise
 
-    run_preprocessing(db, settings=settings, evidence=evidence, user=user)
+    run_preprocessing(
+        db,
+        settings=settings,
+        evidence=evidence,
+        user=user,
+    )
+
     return evidence
 
 
 def run_preprocessing(
-    db: Session, *, settings: Settings, evidence: ImageEvidence, user: User
+    db: Session,
+    *,
+    settings: Settings,
+    evidence: ImageEvidence,
+    user: User,
 ) -> ImageEvidence:
-    """(Re)build the processed copy. The original is only read. Failures are recorded on the
-    evidence row and never raised, so the upload itself always survives."""
+    """Rebuild the processed copy and run OCR without modifying the original."""
+
     old_processed = (
         safe_join(settings.processed_dir, evidence.processed_stored_filename)
         if evidence.processed_stored_filename
         else None
     )
+
     new_path: Path | None = None
+
     try:
         data = original_path(settings, evidence).read_bytes()
         result = preprocess_image(data, settings.preprocessing)
+
         new_name = new_stored_filename("png")
-        new_path = write_new_file(settings.processed_dir, new_name, result.png_bytes)
+        new_path = write_new_file(
+            settings.processed_dir,
+            new_name,
+            result.png_bytes,
+        )
+
     except PreprocessingError as exc:
         error = str(exc)
+
     except (OSError, StorageError):
         error = "Preprocessing failed (could not read or write image files)"
+
     else:
         evidence.preprocessing_status = PreprocessingStatus.COMPLETED
         evidence.preprocessing_error = None
@@ -209,6 +355,7 @@ def run_preprocessing(
         evidence.processed_width = result.width
         evidence.processed_height = result.height
         evidence.processed_at = datetime.now(timezone.utc)
+
         record_event(
             db,
             user_id=user.id,
@@ -221,9 +368,21 @@ def run_preprocessing(
                 "height": result.height,
             },
         )
+
         db.commit()
+
         if old_processed is not None and old_processed != new_path:
             delete_quietly(old_processed)
+
+        # OCR always reads the newly generated processed image.
+        run_ocr(
+            db,
+            settings=settings,
+            evidence=evidence,
+            user=user,
+            image_path=new_path,
+        )
+
         return evidence
 
     evidence.preprocessing_status = PreprocessingStatus.FAILED
@@ -233,13 +392,33 @@ def run_preprocessing(
     evidence.processed_width = None
     evidence.processed_height = None
     evidence.processed_at = None
+
+    evidence.ocr_status = OCRStatus.FAILED
+    evidence.ocr_error = "OCR unavailable because preprocessing failed"
+
     record_event(
         db,
         user_id=user.id,
         inspection_id=evidence.inspection_id,
         action="evidence.preprocessing_failed",
-        details={"evidence_id": evidence.id, "error": evidence.preprocessing_error},
+        details={
+            "evidence_id": evidence.id,
+            "error": evidence.preprocessing_error,
+        },
     )
+
+    record_event(
+        db,
+        user_id=user.id,
+        inspection_id=evidence.inspection_id,
+        action="evidence.ocr_failed",
+        details={
+            "evidence_id": evidence.id,
+            "error": evidence.ocr_error,
+        },
+    )
+
     db.commit()
     delete_quietly(old_processed)
+
     return evidence
