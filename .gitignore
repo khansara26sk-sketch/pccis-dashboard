@@ -1,0 +1,73 @@
+
+@'
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Database and backups
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+
+# Uploaded evidence
+backend/uploads/
+
+# Backup and temporary project folders
+backend-before-phase3-integration/
+backend-phase1-backup/
+backend-phase2-backup/
+phase3-review/
+backend-phase3-full.zip
+phase3-app-diff.txt
+
+# Editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Coverage and temporary files
+.coverage
+htmlcov/
+*.tmp
+*.temp
+'@ | Set-Content -Encoding utf8 .gitignore
+
+# Local backup snapshots
+*.phase2-backup
+*.before-list-api
+
+*.before-api
