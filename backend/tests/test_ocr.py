@@ -309,3 +309,41 @@ def test_reprocessing_updates_existing_ocr_record(
 
     assert started_count == 2
     assert completed_count == 2
+
+def test_get_ocr_result_returns_saved_text_and_confidence(
+    setup, monkeypatch
+):
+    client, inspection, headers, _settings = setup
+
+    def fake_extract_text(image_path, settings):
+        return OCRResult(
+            text="Product Label 123",
+            confidence=94.5,
+        )
+
+    monkeypatch.setattr(
+        evidence_service,
+        "extract_text",
+        fake_extract_text,
+    )
+
+    upload_response = upload(client, inspection.id, headers)
+
+    assert upload_response.status_code == 201
+    evidence_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"/api/inspections/{inspection.id}/evidence/{evidence_id}/ocr",
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+
+    assert body["evidence_id"] == evidence_id
+    assert body["inspection_id"] == inspection.id
+    assert body["status"] == "completed"
+    assert body["error"] is None
+    assert body["extracted_text"] == "Product Label 123"
+    assert body["confidence"] == 94.5
