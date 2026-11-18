@@ -139,6 +139,11 @@ export default function NewInspection() {
 
   const isPreprocessingComplete =
     String(preprocessingStatus).toLowerCase() === 'completed';
+  const canViewOcrResults =
+    Number.isSafeInteger(evidenceData?.inspection_id) &&
+    evidenceData.inspection_id > 0 &&
+    Number.isSafeInteger(evidenceData?.id) &&
+    evidenceData.id > 0;
 
   return (
     <div className="space-y-6">
@@ -459,8 +464,9 @@ export default function NewInspection() {
             </ul>
 
             <p className="text-[11px] text-[#647067] dark:text-[#A3B3A6] mt-4">
-              OCR text extraction, automatic compliance verification and
-              officer review submission are not yet connected to this page.
+              Review extracted text and confidence in OCR Results. Automatic
+              compliance verification and officer review submission are not
+              connected yet.
             </p>
           </div>
 
@@ -481,6 +487,27 @@ export default function NewInspection() {
             >
               View Inspection History
             </button>
+
+            {canViewOcrResults ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    inspectionId: String(evidenceData.inspection_id),
+                    evidenceId: String(evidenceData.id),
+                  });
+                  navigate(`/ocr-results?${params.toString()}`);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#E5EDE6] dark:border-[#29382D] text-xs font-semibold text-[#15803D] dark:text-[#4ADE80] hover:bg-[#F0FDF4] dark:hover:bg-[#173D26]"
+              >
+                View OCR Results
+              </button>
+            ) : (
+              <p className="self-center text-xs text-[#DC2626] dark:text-red-400">
+                OCR results are unavailable because the upload response did not
+                include valid evidence identifiers.
+              </p>
+            )}
           </div>
         </div>
       )}

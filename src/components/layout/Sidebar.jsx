@@ -3,6 +3,7 @@ import { NavLink, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   ScanLine,
+  FileText,
   History,
   BarChart3,
   Scale,
@@ -16,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/new-inspection', label: 'New Inspection', icon: ScanLine, highlight: true },
+  { path: '/ocr-results', label: 'OCR Results', icon: FileText },
   { path: '/history', label: 'Inspection History', icon: History },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/rules', label: 'Compliance Rules', icon: Scale },

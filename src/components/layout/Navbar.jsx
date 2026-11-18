@@ -21,6 +21,7 @@ const pageMeta = {
   '/dashboard': { title: 'Overview Dashboard', section: 'System' },
   '/new-inspection': { title: 'New Package Inspection', section: 'Compliance Audit' },
   '/inspection/new': { title: 'New Package Inspection', section: 'Compliance Audit' },
+  '/ocr-results': { title: 'OCR Results', section: 'OCR Analysis' },
   '/history': { title: 'Inspection History', section: 'Records' },
   '/reports': { title: 'Compliance Reports & Analytics', section: 'Intelligence' },
   '/rules': { title: 'Compliance Rules Directory', section: 'Legal Metrology' },
