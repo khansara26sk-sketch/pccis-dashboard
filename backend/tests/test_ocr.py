@@ -347,3 +347,50 @@ def test_get_ocr_result_returns_saved_text_and_confidence(
     assert body["error"] is None
     assert body["extracted_text"] == "Product Label 123"
     assert body["confidence"] == 94.5
+
+def test_upload_extracts_and_saves_structured_product_fields(
+    setup, db, monkeypatch
+):
+    client, inspection, headers, settings = setup
+
+    ocr_text = """Product Name: Paracetamol
+Batch No: B123
+Mfg Date: 01/2025
+Expiry Date: 01/2027"""
+
+    def fake_extract_text(image_path, _settings):
+        return OCRResult(text=ocr_text, confidence=96.0)
+
+    monkeypatch.setattr(
+        evidence_service,
+        "extract_text",
+        fake_extract_text,
+    )
+
+    response = upload(client, inspection.id, headers)
+
+    assert response.status_code == 201, response.text
+    evidence_id = response.json()["id"]
+
+    db.expire_all()
+
+    expected_fields = {
+        "product_name": "Paracetamol",
+        "batch_number": "B123",
+        "manufacturing_date": "01/2025",
+        "expiry_date": "01/2027",
+    }
+
+    for field_name, expected_value in expected_fields.items():
+        field = db.scalar(
+            select(ExtractedField).where(
+                ExtractedField.evidence_id == evidence_id,
+                ExtractedField.field_name == field_name,
+            )
+        )
+
+        assert field is not None, f"{field_name} record missing"
+        assert field.extracted_value == expected_value
+        assert field.source_text == ocr_text
+        assert field.confidence == 96.0
+        assert field.inspection_id == inspection.id

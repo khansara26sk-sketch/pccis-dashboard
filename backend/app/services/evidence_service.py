@@ -8,6 +8,7 @@ from typing import BinaryIO
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.services.field_extraction_service import extract_product_fields
 from app.config import Settings
 from app.models import (
     ExtractedField,
@@ -178,6 +179,38 @@ def run_ocr(
     extracted_field.extracted_value = result.text
     extracted_field.source_text = result.text
     extracted_field.confidence = result.confidence
+    product_fields = extract_product_fields(result.text)
+
+    structured_fields = {
+        "product_name": product_fields.product_name,
+        "batch_number": product_fields.batch_number,
+        "manufacturing_date": product_fields.manufacturing_date,
+        "expiry_date": product_fields.expiry_date,
+    }
+
+    for field_name, field_value in structured_fields.items():
+        field_record = db.scalar(
+            select(ExtractedField).where(
+                ExtractedField.evidence_id == evidence.id,
+                ExtractedField.field_name == field_name,
+            )
+        )
+
+        if field_record is None:
+            field_record = ExtractedField(
+                inspection_id=evidence.inspection_id,
+                evidence_id=evidence.id,
+                field_name=field_name,
+            )
+            db.add(field_record)
+
+        # Preserve manually corrected values.
+        if field_record.manually_corrected:
+            continue
+
+        field_record.extracted_value = field_value
+        field_record.source_text = result.text
+        field_record.confidence = result.confidence
 
     evidence.ocr_status = OCRStatus.COMPLETED
     evidence.ocr_error = None
