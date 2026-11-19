@@ -10,6 +10,7 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import NewInspection from './pages/NewInspection';
 import OCRResults from './pages/OCRResults';
+import ComplianceResults from './pages/ComplianceResults';
 import InspectionHistory from './pages/InspectionHistory';
 import Reports from './pages/Reports';
 import ComplianceRules from './pages/ComplianceRules';
@@ -47,6 +48,7 @@ export default function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/new-inspection" element={<NewInspection />} />
                   <Route path="/ocr-results" element={<OCRResults />} />
+                  <Route path="/compliance-results" element={<ComplianceResults />} />
                   {/* Alias for backward compatibility */}
                   <Route path="/inspection/new" element={<Navigate to="/new-inspection" replace />} />
                   <Route path="/history" element={<InspectionHistory />} />

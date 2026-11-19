@@ -18,6 +18,7 @@ const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/new-inspection', label: 'New Inspection', icon: ScanLine, highlight: true },
   { path: '/ocr-results', label: 'OCR Results', icon: FileText },
+  { path: '/compliance-results', label: 'Compliance Results', icon: Scale },
   { path: '/history', label: 'Inspection History', icon: History },
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/rules', label: 'Compliance Rules', icon: Scale },

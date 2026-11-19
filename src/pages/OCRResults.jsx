@@ -8,6 +8,7 @@ import {
   FileText,
   LoaderCircle,
   RefreshCw,
+  Scale,
   ScanLine,
   XCircle,
 } from 'lucide-react';
@@ -241,25 +242,51 @@ export default function OCRResults() {
           </p>
         </div>
         {isDemoMode ? (
-          <button
-            type="button"
-            onClick={() => setSearchParams({})}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
-          >
-            Exit demo
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/compliance-results?demo=true')}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#15803D] px-3.5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#166534] dark:bg-[#22C55E] dark:text-[#101713] dark:hover:bg-[#16A34A]"
+            >
+              <Scale className="h-3.5 w-3.5" />
+              Demo Compliance
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchParams({})}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
+            >
+              Exit demo
+            </button>
+          </div>
         ) : hasIdentifiers ? (
-          <button
-            type="button"
-            onClick={loadOcrResult}
-            disabled={isLoading}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`}
-            />
-            Retry
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  inspectionId: String(inspectionId),
+                  evidenceId: String(evidenceId),
+                });
+                navigate(`/compliance-results?${params.toString()}`);
+              }}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#15803D] transition-colors hover:bg-[#F0FDF4] dark:border-[#29382D] dark:text-[#4ADE80] dark:hover:bg-[#173D26]"
+            >
+              <Scale className="h-3.5 w-3.5" />
+              Compliance Results
+            </button>
+            <button
+              type="button"
+              onClick={loadOcrResult}
+              disabled={isLoading}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`}
+              />
+              Retry
+            </button>
+          </div>
         ) : null}
       </header>
 
