@@ -13,7 +13,9 @@ import {
 } from 'lucide-react';
 
 import EmptyState from '../components/common/EmptyState';
+import ProductFields from '../components/inspection/ProductFields';
 import { MOCK_OCR_RESPONSE } from '../services/mockOcrResponse';
+import { MOCK_PRODUCT_FIELDS_PREVIEW } from '../services/mockProductFields';
 import { fetchOcrResult } from '../services/ocrService';
 
 const cardClass =
@@ -296,18 +298,23 @@ export default function OCRResults() {
       )}
 
       {isLoading ? (
-        <div
-          className={`${cardClass} flex min-h-56 flex-col items-center justify-center p-8 text-center`}
-          role="status"
-          aria-live="polite"
-        >
-          <LoaderCircle className="h-8 w-8 animate-spin text-[#15803D] dark:text-[#4ADE80]" />
-          <h3 className={`${titleClass} mt-3`}>Loading OCR results</h3>
-          <p className={`${secondaryTextClass} mt-1`}>
-            Please wait while the result is prepared.
-          </p>
-        </div>
-      ) : loadError ? null : !ocrResult ? (
+        <>
+          <div
+            className={`${cardClass} flex min-h-56 flex-col items-center justify-center p-8 text-center`}
+            role="status"
+            aria-live="polite"
+          >
+            <LoaderCircle className="h-8 w-8 animate-spin text-[#15803D] dark:text-[#4ADE80]" />
+            <h3 className={`${titleClass} mt-3`}>Loading OCR results</h3>
+            <p className={`${secondaryTextClass} mt-1`}>
+              Please wait while the result is prepared.
+            </p>
+          </div>
+          <ProductFields isLoading />
+        </>
+      ) : loadError ? (
+        <ProductFields error="Product fields could not be loaded because the OCR result request failed." />
+      ) : !ocrResult ? (
         <EmptyState
           icon={FileText}
           title="No OCR result available"
@@ -384,6 +391,18 @@ export default function OCRResults() {
               </div>
             )}
           </section>
+
+          <ProductFields
+            items={isDemoMode ? MOCK_PRODUCT_FIELDS_PREVIEW : []}
+            isProcessing={isProcessing}
+            error={
+              isFailed
+                ? ocrResult.error ||
+                  'Product fields are unavailable because OCR processing failed.'
+                : null
+            }
+            isPreview={isDemoMode}
+          />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section
