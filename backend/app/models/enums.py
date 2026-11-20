@@ -24,6 +24,10 @@ class ReviewStatus(str, enum.Enum):
     IN_REVIEW = "in_review"
     REVIEWED = "reviewed"
 
+class ReviewDecision(str, enum.Enum):
+    APPROVED = "approved"
+    NEEDS_CORRECTION = "needs_correction"
+
 
 class OverallResult(str, enum.Enum):
     """Deliberately no 'non-compliant' value: the system flags, a human decides."""

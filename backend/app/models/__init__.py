@@ -7,6 +7,7 @@ from app.models.enums import (
     OCRStatus,
     OverallResult,
     PreprocessingStatus,
+    ReviewDecision,
     ReviewStatus,
     RuleStatus,
     UserRole,
@@ -14,6 +15,7 @@ from app.models.enums import (
 from app.models.extracted_field import ExtractedField
 from app.models.image_evidence import ImageEvidence
 from app.models.inspection import Inspection
+from app.models.inspection_review import InspectionReview
 from app.models.rule_result import RuleResult
 from app.models.user import User
 
@@ -22,12 +24,14 @@ __all__ = [
     "ExtractedField",
     "ImageEvidence",
     "Inspection",
+    "InspectionReview",
     "RuleResult",
     "User",
     "InspectionStatus",
     "OCRStatus",
     "OverallResult",
     "PreprocessingStatus",
+    "ReviewDecision",
     "ReviewStatus",
     "RuleStatus",
     "UserRole",
