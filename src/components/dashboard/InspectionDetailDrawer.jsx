@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   Printer,
@@ -9,6 +10,7 @@ import {
   Package,
   Hash,
   ClipboardCheck,
+  FileText,
 } from 'lucide-react';
 
 import StatusBadge from '../common/StatusBadge';
@@ -23,7 +25,14 @@ export default function InspectionDetailDrawer({
   isOpen,
   onClose,
 }) {
+  const navigate = useNavigate();
+
   if (!isOpen || !inspection) return null;
+
+  const openReport = () => {
+    onClose();
+    navigate(`/inspections/${inspection.id}/report`);
+  };
 
   const handleExportSingle = () => {
     exportToCSV(
@@ -262,12 +271,22 @@ export default function InspectionDetailDrawer({
             Recorded in PCCIS Compliance Database
           </span>
 
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-[#173D26] hover:bg-[#F0FDF4] dark:hover:bg-[#173D26]/80 text-[#17211B] dark:text-[#F0FDF4] border border-[#E5EDE6] dark:border-[#29382D] transition-colors"
-          >
-            Close Details
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openReport}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#15803D] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#166534] dark:bg-[#22C55E] dark:text-[#101713] dark:hover:bg-[#16A34A]"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Report
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-[#173D26] hover:bg-[#F0FDF4] dark:hover:bg-[#173D26]/80 text-[#17211B] dark:text-[#F0FDF4] border border-[#E5EDE6] dark:border-[#29382D] transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
       </div>

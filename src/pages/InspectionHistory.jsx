@@ -9,7 +9,8 @@ import {
   X,
   AlertCircle,
   PlusCircle,
-  PackageSearch
+  PackageSearch,
+  FileText
 } from 'lucide-react';
 
 import DataTable from '../components/common/DataTable';
@@ -219,18 +220,33 @@ export default function InspectionHistory() {
     {
       key: 'actions',
       header: 'Action',
-      className: 'w-24 text-right',
+      className: 'w-40 text-right',
       render: (row) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleRowClick(row);
-          }}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-[#15803D] dark:text-[#4ADE80] hover:text-[#166534] p-1.5 rounded-lg hover:bg-[#F0FDF4] dark:hover:bg-[#173D26] transition-colors"
-        >
-          <span>View</span>
-          <Eye className="w-3.5 h-3.5" />
-        </button>
+        <div className="inline-flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRowClick(row);
+            }}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[#15803D] dark:text-[#4ADE80] hover:text-[#166534] p-1.5 rounded-lg hover:bg-[#F0FDF4] dark:hover:bg-[#173D26] transition-colors"
+          >
+            <span>View</span>
+            <Eye className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/inspections/${row.id}/report`);
+            }}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-[#647067] dark:text-[#A3B3A6] hover:text-[#15803D] p-1.5 rounded-lg hover:bg-[#F0FDF4] dark:hover:bg-[#173D26] transition-colors"
+            aria-label={`Open report for ${row.inspection_number || `inspection ${row.id}`}`}
+          >
+            <span>Report</span>
+            <FileText className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )
     }
   ];

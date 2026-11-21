@@ -24,6 +24,7 @@ const pageMeta = {
   '/ocr-results': { title: 'OCR Results', section: 'OCR Analysis' },
   '/compliance-results': { title: 'Compliance Results', section: 'Compliance Review' },
   '/history': { title: 'Inspection History', section: 'Records' },
+  '/inspections/:inspectionId/report': { title: 'Inspection Report', section: 'Records' },
   '/reports': { title: 'Compliance Reports & Analytics', section: 'Intelligence' },
   '/rules': { title: 'Compliance Rules Directory', section: 'Legal Metrology' },
   '/settings': { title: 'System & Inspector Settings', section: 'Preferences' },
@@ -40,7 +41,11 @@ export default function Navbar({ onMobileMenuClick, isCollapsed }) {
   const [isBackendOnline, setIsBackendOnline] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentMeta = pageMeta[location.pathname] || { title: 'PCCIS Inspection Suite', section: 'System' };
+  const currentMeta =
+    pageMeta[location.pathname] ||
+    (/^\/inspections\/\d+\/report$/.test(location.pathname)
+      ? pageMeta['/inspections/:inspectionId/report']
+      : { title: 'PCCIS Inspection Suite', section: 'System' });
 
   useEffect(() => {
     let isMounted = true;

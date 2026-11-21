@@ -12,6 +12,7 @@ import NewInspection from './pages/NewInspection';
 import OCRResults from './pages/OCRResults';
 import ComplianceResults from './pages/ComplianceResults';
 import InspectionHistory from './pages/InspectionHistory';
+import InspectionReport from './pages/InspectionReport';
 import Reports from './pages/Reports';
 import ComplianceRules from './pages/ComplianceRules';
 import Settings from './pages/Settings';
@@ -52,6 +53,10 @@ export default function App() {
                   {/* Alias for backward compatibility */}
                   <Route path="/inspection/new" element={<Navigate to="/new-inspection" replace />} />
                   <Route path="/history" element={<InspectionHistory />} />
+                  <Route
+                    path="/inspections/:inspectionId/report"
+                    element={<InspectionReport />}
+                  />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/rules" element={<ComplianceRules />} />
                   <Route path="/settings" element={<Settings />} />
