@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -9,12 +9,19 @@ import {
   FileText,
   Info,
   LoaderCircle,
+  RefreshCw,
   ScanLine,
   ShieldAlert,
 } from 'lucide-react';
 
 import EmptyState from '../components/common/EmptyState';
 import RuleResultCard from '../components/inspection/RuleResultCard';
+import { getApiErrorMessage } from '../services/apiError';
+import {
+  fetchComplianceResults,
+  isComplianceResultsNotFound,
+  runComplianceChecks,
+} from '../services/complianceService';
 import { MOCK_COMPLIANCE_RESULTS } from '../services/mockComplianceResults';
 
 const cardClass =
@@ -70,7 +77,7 @@ const stateDetails = {
   },
 };
 
-function ComplianceStatePanel({ state, description }) {
+function ComplianceStatePanel({ state, description, action }) {
   const details = stateDetails[state] || stateDetails.unavailable;
   const Icon = details.icon;
 
@@ -84,6 +91,7 @@ function ComplianceStatePanel({ state, description }) {
       <div>
         <p className="text-sm font-semibold">{details.title}</p>
         <p className="mt-1 text-xs leading-relaxed">{description}</p>
+        {action && <div className="mt-3">{action}</div>}
       </div>
     </div>
   );
@@ -118,7 +126,10 @@ export default function ComplianceResults() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isDemoMode = searchParams.get('demo') === 'true';
-  const inspectionId = parseIdentifier(searchParams.get('inspectionId'));
+  const rawInspectionId = searchParams.get('inspectionId');
+  const inspectionId = parseIdentifier(rawInspectionId);
+  const hasInvalidInspectionId =
+    rawInspectionId !== null && !inspectionId;
   const evidenceId = parseIdentifier(searchParams.get('evidenceId'));
   const demoResults = isDemoMode ? MOCK_COMPLIANCE_RESULTS : null;
   const demoRules = Array.isArray(demoResults?.rules)
@@ -145,6 +156,125 @@ export default function ComplianceResults() {
     ? `/ocr-results?${ocrParams.toString()}`
     : '/ocr-results';
 
+  const [results, setResults] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [settledInspectionId, setSettledInspectionId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [runError, setRunError] = useState(null);
+  const [runRetryAction, setRunRetryAction] = useState('run');
+  const runLockRef = useRef(false);
+
+  const isResultsLoading =
+    Boolean(inspectionId && !isDemoMode) &&
+    (isLoading || settledInspectionId !== inspectionId);
+  const currentResults =
+    results?.inspection_id === inspectionId ? results : null;
+  const currentLoadError =
+    settledInspectionId === inspectionId ? loadError : null;
+
+  const handleLoadError = useCallback((error) => {
+    setResults(null);
+    setLoadError(
+      isComplianceResultsNotFound(error)
+        ? null
+        : getApiErrorMessage(error, 'load compliance results')
+    );
+  }, []);
+
+  const loadResults = useCallback(async () => {
+    if (!inspectionId) {
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      const loadedResults = await fetchComplianceResults(inspectionId);
+      setResults(loadedResults);
+      setRunError(null);
+    } catch (error) {
+      handleLoadError(error);
+    } finally {
+      setIsLoading(false);
+      setSettledInspectionId(inspectionId);
+    }
+  }, [handleLoadError, inspectionId]);
+
+  useEffect(() => {
+    if (isDemoMode || !inspectionId) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    fetchComplianceResults(inspectionId, { signal: controller.signal })
+      .then((loadedResults) => {
+        if (!controller.signal.aborted) {
+          setResults(loadedResults);
+          setLoadError(null);
+          setRunError(null);
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          handleLoadError(error);
+          setRunError(null);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setSettledInspectionId(inspectionId);
+        }
+      });
+
+    return () => controller.abort();
+  }, [handleLoadError, inspectionId, isDemoMode]);
+
+  const handleRunCompliance = useCallback(async () => {
+    if (!inspectionId || runLockRef.current || isResultsLoading) {
+      return;
+    }
+
+    runLockRef.current = true;
+    setIsRunning(true);
+    setRunError(null);
+    setLoadError(null);
+    let runCompleted = false;
+
+    try {
+      await runComplianceChecks(inspectionId);
+      runCompleted = true;
+      const refreshedResults = await fetchComplianceResults(inspectionId);
+      setResults(refreshedResults);
+    } catch (error) {
+      const resource = runCompleted
+        ? 'reload saved compliance results'
+        : 'run compliance checks';
+      const message = getApiErrorMessage(error, resource);
+      setRunRetryAction(runCompleted ? 'load' : 'run');
+      setRunError(
+        runCompleted
+          ? `Compliance checks completed, but saved results could not be loaded. ${message}`
+          : message
+      );
+    } finally {
+      runLockRef.current = false;
+      setIsRunning(false);
+    }
+  }, [inspectionId, isResultsLoading]);
+
+  const retryRunAction = useCallback(() => {
+    setRunError(null);
+
+    if (runRetryAction === 'load') {
+      loadResults();
+    } else {
+      handleRunCompliance();
+    }
+  }, [handleRunCompliance, loadResults, runRetryAction]);
+
   return (
     <div className="space-y-6">
       <header
@@ -164,14 +294,37 @@ export default function ComplianceResults() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(ocrResultsUrl)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back to OCR Results
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isDemoMode && inspectionId && (
+            <button
+              type="button"
+              onClick={handleRunCompliance}
+              disabled={
+                isResultsLoading || isRunning || Boolean(currentLoadError)
+              }
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#15803D] px-3.5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#166534] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#22C55E] dark:text-[#101713] dark:hover:bg-[#16A34A]"
+            >
+              {isRunning ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              {isRunning
+                ? 'Running checks...'
+                : currentResults
+                  ? 'Run checks again'
+                  : 'Run compliance checks'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate(ocrResultsUrl)}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#E5EDE6] px-3.5 py-2.5 text-xs font-semibold text-[#647067] transition-colors hover:bg-[#F0FDF4] dark:border-[#29382D] dark:text-[#A3B3A6] dark:hover:bg-[#173D26]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to OCR Results
+          </button>
+        </div>
       </header>
 
       {isDemoMode ? (
@@ -289,8 +442,12 @@ export default function ComplianceResults() {
       ) : !inspectionId ? (
         <EmptyState
           icon={FileText}
-          title="Select an inspection"
-          description="Open Compliance Results from an OCR Results page to carry its inspection ID. No sample results are shown unless demo mode is explicitly selected."
+          title={hasInvalidInspectionId ? 'Invalid inspection ID' : 'Select an inspection'}
+          description={
+            hasInvalidInspectionId
+              ? 'The inspection ID in the URL is invalid. Open Compliance Results from an inspection with a valid ID.'
+              : 'Open Compliance Results from an OCR Results page to carry its inspection ID. No sample results are shown unless demo mode is explicitly selected.'
+          }
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <button
@@ -314,57 +471,166 @@ export default function ComplianceResults() {
         />
       ) : (
         <>
-          <section
-            className={`${cardClass} p-5 sm:p-6`}
-            aria-labelledby="overall-compliance-heading"
-          >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 id="overall-compliance-heading" className={titleClass}>
-                  Overall compliance status
-                </h3>
-                <p className={`${secondaryTextClass} mt-1`}>
-                  Inspection #{inspectionId}
-                </p>
-              </div>
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#E5EDE6] bg-[#F7FAF7] px-2.5 py-1 text-[11px] font-semibold text-[#647067] dark:border-[#29382D] dark:bg-[#141D17] dark:text-[#A3B3A6]">
-                <Info className="h-3.5 w-3.5" />
-                Unavailable
-              </span>
-            </div>
-            <div className="mt-4">
-              <ComplianceStatePanel
-                state="unavailable"
-                description="The backend does not yet expose compliance results. No evaluation or sample data has been substituted."
-              />
-            </div>
-          </section>
-
-          <section
-            className={`${cardClass} p-5 sm:p-6`}
-            aria-labelledby="potential-issues-heading"
-          >
-            <h3 id="potential-issues-heading" className={titleClass}>
-              Potential issues
-            </h3>
-            <p className={`${secondaryTextClass} mt-2`}>
-              Potential issues are unavailable until backend compliance
-              integration is ready.
-            </p>
-          </section>
-
-          <section
-            className="space-y-3"
-            aria-labelledby="rule-results-heading"
-          >
-            <h3 id="rule-results-heading" className={titleClass}>
-              Rule-wise results
-            </h3>
+          {isResultsLoading ? (
             <ComplianceStatePanel
-              state="unavailable"
-              description="Rule results and explanations cannot be displayed until the backend provides them."
+              state="loading"
+              description="Loading saved screening results from the backend."
             />
-          </section>
+          ) : currentLoadError ? (
+            <ComplianceStatePanel
+              state="error"
+              description={currentLoadError}
+              action={
+                <button
+                  type="button"
+                  onClick={() => loadResults()}
+                  disabled={isResultsLoading || isRunning}
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Retry loading results
+                </button>
+              }
+            />
+          ) : null}
+
+          {isRunning && !isResultsLoading && (
+            <ComplianceStatePanel
+              state="loading"
+              description={
+                currentResults
+                  ? 'Running checks. The previously saved results remain visible until the refreshed results are loaded.'
+                  : 'Running the requested screening checks and loading the saved results.'
+              }
+            />
+          )}
+
+          {runError && !isResultsLoading && (
+            <ComplianceStatePanel
+              state="error"
+              description={runError}
+              action={
+                <button
+                  type="button"
+                  onClick={retryRunAction}
+                  disabled={isRunning || isResultsLoading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {runRetryAction === 'load'
+                    ? 'Retry loading results'
+                    : 'Retry compliance run'}
+                </button>
+              }
+            />
+          )}
+
+          {!isResultsLoading &&
+            !currentLoadError &&
+            !currentResults &&
+            !isRunning &&
+            !runError && (
+            <ComplianceStatePanel
+              state="empty"
+              description="No saved compliance results are available for this inspection yet. Select “Run compliance checks” to request a screening run."
+            />
+            )}
+
+          {!isResultsLoading && !currentLoadError && currentResults && (
+            <>
+              <section
+                className={`${cardClass} p-5 sm:p-6`}
+                aria-labelledby="overall-compliance-heading"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 id="overall-compliance-heading" className={titleClass}>
+                      Overall screening result
+                    </h3>
+                    <p className={`${secondaryTextClass} mt-1`}>
+                      Inspection #{currentResults.inspection_id}
+                    </p>
+                  </div>
+                  <OverallStatus status={currentResults.overall_result} />
+                </div>
+                <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-900 dark:text-amber-300">
+                  {currentResults.disclaimer}
+                </p>
+              </section>
+
+              {currentResults.rules.length === 0 ? (
+                <ComplianceStatePanel
+                  state="empty"
+                  description="The backend returned no rule results for this screening run."
+                />
+              ) : (
+                <>
+                  <section
+                    className={`${cardClass} p-5 sm:p-6`}
+                    aria-labelledby="potential-issues-heading"
+                  >
+                    <div className="flex items-center gap-2 border-b border-[#E5EDE6] pb-4 dark:border-[#29382D]">
+                      <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+                      <h3 id="potential-issues-heading" className={titleClass}>
+                        Potential issues
+                      </h3>
+                      <span className="ml-auto rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-[#B45309] dark:text-amber-300">
+                        {currentResults.potential_issues.length}
+                      </span>
+                    </div>
+
+                    {currentResults.potential_issues.length === 0 ? (
+                      <p className={`${secondaryTextClass} mt-4`}>
+                        The backend returned no potential issues for this
+                        screening run.
+                      </p>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {currentResults.potential_issues.map((rule) => (
+                          <RuleResultCard
+                            key={rule.rule_id}
+                            ruleId={rule.rule_id}
+                            fieldName={rule.field_name}
+                            ruleVersion={rule.rule_version}
+                            status={rule.status}
+                            explanation={rule.explanation}
+                            evidenceText={rule.evidence_text}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section
+                    className="space-y-3"
+                    aria-labelledby="rule-results-heading"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ScanLine className="h-4 w-4 text-[#15803D] dark:text-[#4ADE80]" />
+                      <h3 id="rule-results-heading" className={titleClass}>
+                        Rule-wise results
+                      </h3>
+                      <span className={`${secondaryTextClass} ml-auto`}>
+                        {currentResults.rules.length} checks
+                      </span>
+                    </div>
+
+                    {currentResults.rules.map((rule) => (
+                      <RuleResultCard
+                        key={rule.rule_id}
+                        ruleId={rule.rule_id}
+                        fieldName={rule.field_name}
+                        ruleVersion={rule.rule_version}
+                        status={rule.status}
+                        explanation={rule.explanation}
+                        evidenceText={rule.evidence_text}
+                      />
+                    ))}
+                  </section>
+                </>
+              )}
+            </>
+          )}
         </>
       )}
     </div>

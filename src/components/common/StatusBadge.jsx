@@ -141,6 +141,7 @@ const statusConfig = {
 
 export default function StatusBadge({
   status,
+  displayLabel,
   size = 'md',
   showIcon = true,
 }) {
@@ -173,7 +174,7 @@ export default function StatusBadge({
           }
         />
       )}
-      <span>{config.label}</span>
+      <span>{displayLabel ?? config.label}</span>
     </span>
   );
 }

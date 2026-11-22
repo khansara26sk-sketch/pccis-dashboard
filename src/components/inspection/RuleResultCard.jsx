@@ -49,12 +49,19 @@ const getText = (value) =>
 
 export default function RuleResultCard({
   name,
+  ruleId,
+  fieldName,
+  ruleVersion,
   status,
   explanation,
   evidenceText,
   isSample = false,
 }) {
-  const ruleName = getText(name) || 'Rule information unavailable';
+  const ruleName =
+    getText(name) || getText(ruleId) || 'Rule information unavailable';
+  const ruleIdentifier = getText(ruleId);
+  const field = getText(fieldName);
+  const version = getText(ruleVersion);
   const statusLabel = getText(status) || 'Status unavailable';
   const statusDetails = statusStyles[statusLabel.toLowerCase()] || {
     icon: CircleHelp,
@@ -72,6 +79,11 @@ export default function RuleResultCard({
           <h3 className="min-w-0 break-words text-sm font-bold text-[#17211B] dark:text-[#F0FDF4]">
             {ruleName}
           </h3>
+          {ruleIdentifier && name && (
+            <span className="font-mono text-[10px] text-[#647067] dark:text-[#A3B3A6]">
+              {ruleIdentifier}
+            </span>
+          )}
           {isSample && (
             <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-[#B45309] dark:text-amber-300">
               <Beaker className="h-3 w-3" />
@@ -87,6 +99,14 @@ export default function RuleResultCard({
           {statusLabel}
         </span>
       </div>
+
+      {(field || version) && (
+        <p className="mt-2 break-words font-mono text-[10px] text-[#647067] dark:text-[#A3B3A6]">
+          {field && `Field: ${field}`}
+          {field && version && ' · '}
+          {version && `Version: ${version}`}
+        </p>
+      )}
 
       <p className="mt-3 break-words text-xs leading-relaxed text-[#647067] dark:text-[#A3B3A6]">
         {explanationText || 'No explanation was provided.'}
