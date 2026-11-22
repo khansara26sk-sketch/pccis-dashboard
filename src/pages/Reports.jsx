@@ -23,12 +23,25 @@ import { fetchReportsData } from '../services/dashboardService';
 import { printDocument, exportToCSV } from '../utils/exportUtils';
 import { useToast } from '../context/ToastContext';
 
+import {
+  fetchInspectionReport,
+  downloadInspectionReportPDF,
+} from '../services/dashboardService.js';
+
+import { fetchInspectionsList } from '../services/inspectionService.js';
+
 export default function Reports() {
   const { addToast } = useToast();
   const [reportData, setReportData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+
+  const [inspectionList, setInspectionList] = useState([]);
+  const [selectedInspectionId, setSelectedInspectionId] = useState('');
+  const [inspectionReport, setInspectionReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
 
   // Filters
   const [dateRange, setDateRange] = useState('Last 30 Days');
@@ -89,9 +102,150 @@ export default function Reports() {
   const totalAudited = reportData?.summary?.totalAudited ?? 0;
   const hasRecords = totalAudited > 0;
 
+  // Load inspection records for the report selector
+const loadInspectionList = async () => {
+  try {
+    const response = await fetchInspectionsList({
+      skip: 0,
+      limit: 100,
+    });
+
+    setInspectionList(
+      Array.isArray(response.data) ? response.data : []
+    );
+  } catch (error) {
+    console.error('Failed to load inspections:', error);
+    setReportError('Unable to load inspection records.');
+  }
+};
+
+// Load the selected inspection report
+const handleLoadInspectionReport = async () => {
+  if (!selectedInspectionId) return;
+
+  setReportLoading(true);
+  setReportError('');
+  setInspectionReport(null);
+
+  try {
+    const response = await fetchInspectionReport(
+      selectedInspectionId
+    );
+
+    setInspectionReport(response);
+  } catch (error) {
+    console.error('Failed to load inspection report:', error);
+    setReportError(
+      error.message || 'Unable to load inspection report.'
+    );
+  } finally {
+    setReportLoading(false);
+  }
+};
+
+// Download the backend-generated PDF
+const handleDownloadInspectionPDF = async () => {
+  if (!selectedInspectionId) return;
+
+  try {
+    const pdfBlob = await downloadInspectionReportPDF(
+      selectedInspectionId
+    );
+
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `PCCIS-Inspection-${selectedInspectionId}.pdf`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('PDF download failed:', error);
+    setReportError('Unable to download the inspection PDF.');
+  }
+};
+
+useEffect(() => {
+  loadInspectionList();
+}, []);
+
   return (
+
     <div className="space-y-6">
       {/* Page Header with Export Controls */}
+      {/* Individual Inspection Report */}
+<div className="bg-white dark:bg-[#19241C] rounded-2xl p-6 border border-[#E5EDE6] dark:border-[#29382D] space-y-4">
+
+  <div>
+    <h3 className="text-lg font-bold text-[#17211B] dark:text-[#F0FDF4]">
+      Individual Inspection Report
+    </h3>
+    <p className="text-sm text-[#647067] dark:text-[#A3B3A6] mt-1">
+      View a saved inspection report or download its PDF.
+    </p>
+  </div>
+
+  <div className="flex flex-col sm:flex-row gap-3">
+
+    <select
+      value={selectedInspectionId}
+      onChange={(e) => {
+        setSelectedInspectionId(e.target.value);
+        setInspectionReport(null);
+        setReportError('');
+      }}
+      className="flex-1 p-3 rounded-xl border border-[#E5EDE6] dark:border-[#29382D] bg-[#F7FAF7] dark:bg-[#141D17] text-sm"
+    >
+      <option value="">Select an inspection</option>
+
+      {inspectionList.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.inspection_number || `Inspection #${item.id}`}
+          {' - '}
+          {item.product_name || 'Unnamed product'}
+        </option>
+      ))}
+    </select>
+
+    <button
+      onClick={handleLoadInspectionReport}
+      disabled={!selectedInspectionId || reportLoading}
+      className="px-5 py-3 rounded-xl bg-[#15803D] text-white font-semibold text-sm disabled:opacity-50"
+    >
+      {reportLoading ? 'Loading...' : 'Load Report'}
+    </button>
+
+    <button
+      onClick={handleDownloadInspectionPDF}
+      disabled={!selectedInspectionId}
+      className="px-5 py-3 rounded-xl border border-[#15803D] text-[#15803D] dark:text-[#4ADE80] font-semibold text-sm disabled:opacity-50"
+    >
+      Download PDF
+    </button>
+
+  </div>
+
+  {reportError && (
+    <p className="text-sm text-red-600">{reportError}</p>
+  )}
+
+  {inspectionReport && (
+    <div className="p-4 rounded-xl bg-[#F7FAF7] dark:bg-[#141D17] border border-[#E5EDE6] dark:border-[#29382D]">
+      <h4 className="font-bold text-[#17211B] dark:text-[#F0FDF4] mb-2">
+        Report Loaded Successfully
+      </h4>
+
+      <pre className="text-xs whitespace-pre-wrap break-words text-[#647067] dark:text-[#A3B3A6]">
+        {JSON.stringify(inspectionReport, null, 2)}
+      </pre>
+    </div>
+  )}
+
+</div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#19241C] rounded-2xl p-6 border border-[#E5EDE6] dark:border-[#29382D] shadow-[0_2px_8px_rgba(21,128,61,0.03)]">
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[#15803D] dark:text-[#4ADE80]">

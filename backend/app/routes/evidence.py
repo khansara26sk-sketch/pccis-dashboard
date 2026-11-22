@@ -6,6 +6,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from fastapi import Body
+from sqlalchemy import select
+
+from app.models.extracted_field import ExtractedField
+
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies.auth import CurrentUser
@@ -237,6 +242,94 @@ def get_ocr_result(
 
     return OCRResultRead.model_validate(result)
 
+@router.get(
+    "/{evidence_id}/fields",
+    summary="Get structured product fields",
+)
+def get_structured_fields(
+    inspection_id: int,
+    evidence_id: int,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    inspection = _load_inspection(db, current_user, inspection_id)
+    evidence = _load_evidence(db, inspection, evidence_id)
+
+    result = ocr_result_service.get_structured_fields(
+        db,
+        evidence=evidence,
+    )
+
+    return result
+
+@router.patch(
+    "/{evidence_id}/fields",
+    summary="Manually correct extracted product fields",
+    responses=COMMON_ERRORS,
+)
+def update_structured_fields(
+    inspection_id: int,
+    evidence_id: int,
+    corrections: dict[str, str | None] = Body(...),
+    current_user: CurrentUser = None,
+    db: DbSession = None,
+):
+    inspection = _load_inspection(db, current_user, inspection_id)
+    evidence = _load_evidence(db, inspection, evidence_id)
+
+    allowed_fields = {
+        "product_name",
+        "batch_number",
+        "manufacturing_date",
+        "expiry_date",
+        "manufacturer",
+        "address",
+        "net_quantity",
+        "mrp",
+        "consumer_care",
+        "country_of_origin",
+    }
+
+    if not corrections:
+        raise HTTPException(
+            status_code=400,
+            detail="No fields provided for correction",
+        )
+
+    invalid_fields = set(corrections) - allowed_fields
+
+    if invalid_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid fields: {', '.join(sorted(invalid_fields))}",
+        )
+
+    for field_name, value in corrections.items():
+        record = db.scalar(
+            select(ExtractedField).where(
+                ExtractedField.evidence_id == evidence.id,
+                ExtractedField.field_name == field_name,
+            )
+        )
+
+        if record is None:
+            record = ExtractedField(
+                inspection_id=inspection.id,
+                evidence_id=evidence.id,
+                field_name=field_name,
+            )
+            db.add(record)
+
+        record.extracted_value = value.strip() if value else None
+        record.manually_corrected = True
+        record.corrected_by = current_user.id
+
+    db.commit()
+
+    return ocr_result_service.get_structured_fields(
+        db,
+        evidence=evidence,
+    )
 
 @router.get(
     "/{evidence_id}/processed",

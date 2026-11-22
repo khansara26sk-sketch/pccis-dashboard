@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ExtractedField, ImageEvidence, OCRStatus
 
+from app.services.field_extraction_service import get_field_status
 
 def get_ocr_result(
     db: Session,
@@ -40,4 +41,67 @@ def get_ocr_result(
             if is_completed and extracted_field
             else None
         ),
+    }
+
+def get_structured_fields(
+    db: Session,
+    *,
+    evidence: ImageEvidence,
+) -> dict:
+    """Return structured product fields with review statuses."""
+
+    field_names = [
+        "product_name",
+        "batch_number",
+        "manufacturing_date",
+        "expiry_date",
+        "manufacturer",
+        "address",
+        "net_quantity",
+        "mrp",
+        "consumer_care",
+        "country_of_origin",
+    ]
+
+    fields = {name: None for name in field_names}
+    field_statuses = {
+        name: "not_detected" for name in field_names
+    }
+
+    # Do not return stale values if OCR is pending or failed.
+    if evidence.ocr_status != OCRStatus.COMPLETED:
+        return {
+            "evidence_id": evidence.id,
+            "inspection_id": evidence.inspection_id,
+            "status": evidence.ocr_status,
+            "fields": fields,
+            "field_statuses": field_statuses,
+        }
+
+    records = db.scalars(
+        select(ExtractedField).where(
+            ExtractedField.evidence_id == evidence.id,
+            ExtractedField.field_name.in_(field_names),
+        )
+    ).all()
+
+    for record in records:
+        name = record.field_name
+        value = record.extracted_value
+
+        fields[name] = value
+
+        if record.manually_corrected:
+            field_statuses[name] = (
+                "verified" if value else "not_detected"
+            )
+        else:
+            field_statuses[name] = get_field_status(name, value)
+
+    return {
+        "evidence_id": evidence.id,
+        "inspection_id": evidence.inspection_id,
+        "status": evidence.ocr_status,
+        "fields": fields,
+        "field_statuses": field_statuses,
     }

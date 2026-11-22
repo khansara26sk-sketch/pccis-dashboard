@@ -22,7 +22,10 @@ import ActivityLineChart from '../components/charts/ActivityLineChart';
 import ComplianceDonutChart from '../components/charts/ComplianceDonutChart';
 import CategoryBarChart from '../components/charts/CategoryBarChart';
 import InspectionDetailDrawer from '../components/dashboard/InspectionDetailDrawer';
-import { fetchDashboardMetrics } from '../services/dashboardService';
+import {
+  fetchDashboardMetrics,
+  fetchReportsData
+} from '../services/dashboardService';
 import { fetchInspectionsList } from '../services/inspectionService';
 import { formatDate } from '../utils/formatters';
 
@@ -42,12 +45,22 @@ export default function Dashboard() {
     setIsLoading(true);
     setConnectionError(null);
     try {
-      const [metricRes, inspectRes] = await Promise.all([
-        fetchDashboardMetrics(),
-        fetchInspectionsList({ limit: 5 })
-      ]);
-      setMetrics(metricRes.data || null);
-      setRecentInspections(inspectRes.data?.items || inspectRes.data || []);
+      const [metricRes, inspectRes, reportsRes] = await Promise.all([
+  fetchDashboardMetrics(),
+  fetchInspectionsList({ limit: 5 }),
+  fetchReportsData({ range: 'Last 30 Days', category: 'All' })
+]);
+
+const reportData = reportsRes.data || {};
+
+setMetrics({
+  ...(metricRes.data || {}),
+  activityHistory: reportData.trends || [],
+  complianceStatusBreakdown: reportData.statusBreakdown || [],
+  categoryViolationBreakdown: reportData.categories || []
+});
+
+setRecentInspections(inspectRes.data?.items || inspectRes.data || []);
     } catch (err) {
       console.error('Failed to load dashboard data from backend:', err);
       const isOffline = err.isNetworkError || !err.status || err.status === 404;

@@ -1,4 +1,5 @@
-
+import { useNavigate } from 'react-router-dom';
+import { fetchInspectionEvidence } from '../../services/inspectionService';
 import React from 'react';
 import {
   X,
@@ -23,6 +24,7 @@ export default function InspectionDetailDrawer({
   isOpen,
   onClose,
 }) {
+  const navigate = useNavigate();
   if (!isOpen || !inspection) return null;
 
   const handleExportSingle = () => {
@@ -43,6 +45,38 @@ export default function InspectionDetailDrawer({
       `inspection-${inspection.inspection_number}.csv`
     );
   };
+
+  const handleViewOCR = async () => {
+  try {
+    const response = await fetchInspectionEvidence(inspection.id);
+    const evidenceList = Array.isArray(response.data)
+      ? response.data
+      : [];
+
+    const completedEvidence = evidenceList
+      .filter((item) => item.ocr_status === 'completed')
+      .sort(
+        (a, b) =>
+          new Date(b.uploaded_at) - new Date(a.uploaded_at)
+      );
+
+    if (completedEvidence.length === 0) {
+      alert('No completed OCR result is available for this inspection.');
+      return;
+    }
+
+    const latestEvidence = completedEvidence[0];
+
+    onClose();
+
+    navigate(
+      `/ocr-results?inspectionId=${inspection.id}&evidenceId=${latestEvidence.id}`
+    );
+  } catch (error) {
+    console.error('Failed to fetch inspection evidence:', error);
+    alert('Unable to load inspection evidence. Please try again.');
+  }
+};
 
   const details = [
     {
@@ -100,6 +134,14 @@ export default function InspectionDetailDrawer({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+
+            <button
+  onClick={handleViewOCR}
+  className="px-3 py-2 text-xs font-semibold rounded-xl bg-[#15803D] hover:bg-[#166534] text-white transition-colors"
+>
+  View OCR Results
+</button>
+
             <button
               onClick={printDocument}
               className="p-2 rounded-xl text-[#647067] hover:text-[#17211B] dark:hover:text-[#F0FDF4] hover:bg-[#F0FDF4] dark:hover:bg-[#173D26] transition-colors"

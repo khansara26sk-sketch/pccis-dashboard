@@ -9,6 +9,8 @@ import {
   Database
 } from 'lucide-react';
 
+import apiClient from '../services/api';
+
 export default function ComplianceRules() {
   const [rules, setRules] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -18,33 +20,47 @@ export default function ComplianceRules() {
   // Rules API is not implemented in the backend yet.
   // Do not display sample or fabricated regulatory rules.
   useEffect(() => {
-    setRules([]);
-    setIsLoading(false);
-  }, []);
+  const loadRules = async () => {
+    try {
+      setIsLoading(true);
+
+      const response = await apiClient.get('/api/rules');
+
+      setRules(response.data);
+    } catch (error) {
+      console.error('Failed to load compliance rules:', error);
+      setRules([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  loadRules();
+}, []);
 
   const filteredRules = rules.filter((rule) => {
-    const searchTerm = search.toLowerCase();
+  const searchTerm = search.toLowerCase();
 
-    const matchesSearch =
-      !searchTerm ||
-      rule.name?.toLowerCase().includes(searchTerm) ||
-      rule.ref?.toLowerCase().includes(searchTerm) ||
-      rule.category?.toLowerCase().includes(searchTerm) ||
-      rule.description?.toLowerCase().includes(searchTerm);
+  const matchesSearch =
+    !searchTerm ||
+    rule.name?.toLowerCase().includes(searchTerm) ||
+    rule.rule_id?.toLowerCase().includes(searchTerm) ||
+    rule.rule_type?.toLowerCase().includes(searchTerm) ||
+    rule.description?.toLowerCase().includes(searchTerm);
 
-    const matchesCategory =
-      categoryFilter === 'All' ||
-      rule.category === categoryFilter;
+  const matchesCategory =
+    categoryFilter === 'All' ||
+    rule.rule_type === categoryFilter;
 
-    return matchesSearch && matchesCategory;
-  });
+  return matchesSearch && matchesCategory;
+});
 
-  const categories = [
-    'All',
-    ...new Set(
-      rules.map((rule) => rule.category).filter(Boolean)
-    )
-  ];
+const categories = [
+  'All',
+  ...new Set(
+    rules.map((rule) => rule.rule_type).filter(Boolean)
+  )
+];
 
   return (
     <div className="space-y-6">
@@ -145,7 +161,7 @@ export default function ComplianceRules() {
           </div>
 
           <h3 className="text-base font-bold text-[#17211B] dark:text-[#F0FDF4] font-['Plus_Jakarta_Sans']">
-            Compliance Rules API Not Available
+            No Compliance Rules Found
           </h3>
 
           <p className="text-xs text-[#647067] dark:text-[#A3B3A6] mt-2 max-w-md mx-auto leading-relaxed">
@@ -183,7 +199,7 @@ export default function ComplianceRules() {
 
           {filteredRules.map((rule) => (
             <div
-              key={rule.id}
+              key={rule.rule_id}
               className="bg-white dark:bg-[#19241C] rounded-2xl border border-[#E5EDE6] dark:border-[#29382D] p-5 shadow-[0_2px_8px_rgba(21,128,61,0.03)] hover:border-[#15803D]/40 dark:hover:border-[#4ADE80]/30 transition-all"
             >
               <div className="flex items-start justify-between gap-2 mb-2">

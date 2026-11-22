@@ -81,7 +81,23 @@ def run_compliance_checks(
 
     extracted_fields = _get_extracted_fields(db, inspection.id)
 
-    has_usable_extraction = bool(extracted_fields)
+    # Map OCR field names to compliance rule field names.
+    extracted_fields["manufacturer_packer"] = (
+    extracted_fields.get("manufacturer")
+)
+
+    extracted_fields["manufacturer_address"] = (
+    extracted_fields.get("address")
+)
+
+    extracted_fields["packaging_date"] = (
+    extracted_fields.get("manufacturing_date")
+)
+
+    has_usable_extraction = any(
+    value is not None and str(value).strip()
+    for value in extracted_fields.values()
+)
 
     if has_usable_extraction:
         evaluations = evaluate_all_rules(extracted_fields)

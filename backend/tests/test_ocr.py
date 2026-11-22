@@ -394,3 +394,40 @@ Expiry Date: 01/2027"""
         assert field.source_text == ocr_text
         assert field.confidence == 96.0
         assert field.inspection_id == inspection.id
+
+
+from app.services.field_extraction_service import extract_product_fields
+
+
+def test_extracts_additional_product_fields():
+    text = """
+    Manufacturer: ABC Foods Pvt Ltd
+    Address: New Delhi, India
+    Net Quantity: 200 g
+    MRP: Rs. 50
+    Consumer Care: 1800-123-456
+    Country of Origin: India
+    """
+
+    result = extract_product_fields(text)
+
+    assert result.manufacturer == "ABC Foods Pvt Ltd"
+    assert result.address == "New Delhi, India"
+    assert result.net_quantity == "200 g"
+    assert result.mrp == "Rs. 50"
+    assert result.consumer_care == "1800-123-456"
+    assert result.country_of_origin == "India"
+
+
+def test_extracts_fields_from_single_line_ocr():
+    text = (
+        "NET QUANTITY: 200 g "
+        "MRP: Rs. 50 "
+        "COUNTRY OF ORIGIN: India"
+    )
+
+    result = extract_product_fields(text)
+
+    assert result.net_quantity == "200 g"
+    assert result.mrp == "Rs. 50"
+    assert result.country_of_origin == "India"

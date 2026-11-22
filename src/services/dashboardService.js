@@ -20,3 +20,26 @@ export const fetchReportsData = async (params = {}) => {
     data: response.data,
   };
 };
+
+
+// Fetch an individual inspection report in JSON format
+export const fetchInspectionReport = async (inspectionId) => {
+  const response = await apiClient.get(
+    `/api/inspections/${inspectionId}/report`
+  );
+
+  return response.data;
+};
+
+// Download an individual inspection report in PDF format
+export const downloadInspectionReportPDF = async (inspectionId) => {
+  const response = await apiClient.get(
+    `/api/inspections/${inspectionId}/report/pdf`,
+    {
+      responseType: 'blob',
+    }
+  );
+
+  return response.data;
+};
+

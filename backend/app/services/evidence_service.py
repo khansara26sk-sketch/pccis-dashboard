@@ -8,6 +8,9 @@ from typing import BinaryIO
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from dataclasses import dataclass
+import re
+
 from app.services.field_extraction_service import extract_product_fields
 from app.config import Settings
 from app.models import (
@@ -179,14 +182,24 @@ def run_ocr(
     extracted_field.extracted_value = result.text
     extracted_field.source_text = result.text
     extracted_field.confidence = result.confidence
-    product_fields = extract_product_fields(result.text)
+    product_fields = extract_product_fields(
+    list(result.candidate_results)
+    if result.candidate_results
+    else result.text
+)
 
     structured_fields = {
-        "product_name": product_fields.product_name,
-        "batch_number": product_fields.batch_number,
-        "manufacturing_date": product_fields.manufacturing_date,
-        "expiry_date": product_fields.expiry_date,
-    }
+    "product_name": product_fields.product_name,
+    "batch_number": product_fields.batch_number,
+    "manufacturing_date": product_fields.manufacturing_date,
+    "expiry_date": product_fields.expiry_date,
+    "manufacturer": product_fields.manufacturer,
+    "address": product_fields.address,
+    "net_quantity": product_fields.net_quantity,
+    "mrp": product_fields.mrp,
+    "consumer_care": product_fields.consumer_care,
+    "country_of_origin": product_fields.country_of_origin,
+}
 
     for field_name, field_value in structured_fields.items():
         field_record = db.scalar(
