@@ -53,7 +53,10 @@ def _get_extracted_fields(
 
     for field in extracted_fields:
         if field.field_name not in result:
-            result[field.field_name] = field.extracted_value
+            value = field.extracted_value
+            result[field.field_name] = (
+                value.strip() if isinstance(value, str) else value
+            )
 
     return result
 
@@ -80,6 +83,7 @@ def run_compliance_checks(
     """Run declaration-presence checks and persist their results."""
 
     extracted_fields = _get_extracted_fields(db, inspection.id)
+    has_extraction_records = bool(extracted_fields)
 
     # Map OCR field names to compliance rule field names.
     extracted_fields["manufacturer_packer"] = (
@@ -99,7 +103,7 @@ def run_compliance_checks(
     for value in extracted_fields.values()
 )
 
-    if has_usable_extraction:
+    if has_extraction_records:
         evaluations = evaluate_all_rules(extracted_fields)
     else:
         evaluations = [

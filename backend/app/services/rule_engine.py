@@ -87,7 +87,7 @@ def evaluate_rule(
 ) -> RuleEvaluation:
     """Evaluate presence of extracted text, without making a legal determination."""
 
-    value = extracted_value.strip() if extracted_value else None
+    value = extracted_value.strip() if extracted_value else ""
 
     if value:
         status = RuleStatus.MANUAL_REVIEW
