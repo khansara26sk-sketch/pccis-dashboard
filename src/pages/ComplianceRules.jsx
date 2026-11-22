@@ -1,48 +1,88 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  AlertCircle,
   Search,
   Filter,
   ShieldAlert,
   BookOpen,
-  Scale,
-  Database
+  RefreshCw,
 } from 'lucide-react';
+
+import { getApiErrorMessage } from '../services/apiError';
+import { fetchComplianceRules } from '../services/complianceService';
 
 export default function ComplianceRules() {
   const [rules, setRules] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [ruleTypeFilter, setRuleTypeFilter] = useState('All');
 
-  // Rules API is not implemented in the backend yet.
-  // Do not display sample or fabricated regulatory rules.
+  const loadRules = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      setRules(await fetchComplianceRules());
+    } catch (error) {
+      setRules([]);
+      setLoadError(getApiErrorMessage(error, 'load compliance rules'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    setRules([]);
-    setIsLoading(false);
+    const controller = new AbortController();
+    fetchComplianceRules({ signal: controller.signal })
+      .then((loadedRules) => {
+        if (!controller.signal.aborted) {
+          setRules(loadedRules);
+          setLoadError(null);
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setRules([]);
+          setLoadError(getApiErrorMessage(error, 'load compliance rules'));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => controller.abort();
   }, []);
 
   const filteredRules = rules.filter((rule) => {
-    const searchTerm = search.toLowerCase();
-
+    const searchTerm = search.trim().toLowerCase();
+    const searchableFields = [
+      rule.rule_id,
+      rule.name,
+      rule.field_name,
+      rule.description,
+      rule.rule_version,
+      rule.rule_type,
+      rule.legal_verification,
+    ];
     const matchesSearch =
       !searchTerm ||
-      rule.name?.toLowerCase().includes(searchTerm) ||
-      rule.ref?.toLowerCase().includes(searchTerm) ||
-      rule.category?.toLowerCase().includes(searchTerm) ||
-      rule.description?.toLowerCase().includes(searchTerm);
+      searchableFields.some((value) =>
+        value?.toLowerCase().includes(searchTerm)
+      );
+    const matchesRuleType =
+      ruleTypeFilter === 'All' || rule.rule_type === ruleTypeFilter;
 
-    const matchesCategory =
-      categoryFilter === 'All' ||
-      rule.category === categoryFilter;
-
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesRuleType;
   });
 
-  const categories = [
+  const ruleTypes = [
     'All',
     ...new Set(
-      rules.map((rule) => rule.category).filter(Boolean)
+      rules.map((rule) => rule.rule_type).filter(Boolean)
     )
   ];
 
@@ -54,15 +94,15 @@ export default function ComplianceRules() {
 
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[#15803D] dark:text-[#4ADE80]">
-            Regulatory Rule Engine
+            Declaration Screening Rules
           </span>
 
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17211B] dark:text-[#F0FDF4] font-['Plus_Jakarta_Sans'] mt-0.5">
-            Compliance Rules & Legal Metrology Directives
+            Compliance Rule Definitions
           </h2>
 
           <p className="text-xs sm:text-sm text-[#647067] dark:text-[#A3B3A6] mt-1">
-            Regulatory rule definitions for evaluating packaged commodity declarations against applicable legal metrology standards.
+            Backend-configured checks for detecting declaration text in extracted package data. These checks are administrative screening, not legal determinations.
           </p>
         </div>
 
@@ -89,7 +129,7 @@ export default function ComplianceRules() {
         </div>
       </div>
 
-      {/* Search and Category Filter */}
+      {/* Search and Rule Type Filter */}
       <div className="bg-white dark:bg-[#19241C] rounded-2xl p-4 border border-[#E5EDE6] dark:border-[#29382D] shadow-[0_2px_8px_rgba(21,128,61,0.03)] flex flex-col sm:flex-row items-center justify-between gap-3">
 
         <div className="relative w-full sm:w-80">
@@ -99,7 +139,8 @@ export default function ComplianceRules() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by rule reference, name, or keywords..."
+            placeholder="Search rule ID, name, field, or description..."
+            aria-label="Search compliance rules"
             className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-[#E5EDE6] dark:border-[#29382D] bg-[#F7FAF7] dark:bg-[#141D17] text-[#17211B] dark:text-[#F0FDF4] focus:outline-none focus:border-[#15803D] dark:focus:border-[#4ADE80]"
           />
         </div>
@@ -108,17 +149,18 @@ export default function ComplianceRules() {
           <Filter className="w-4 h-4 text-[#15803D] dark:text-[#4ADE80]" />
 
           <span className="text-xs font-semibold text-[#647067] dark:text-[#A3B3A6]">
-            Category:
+            Rule type:
           </span>
 
           <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={ruleTypeFilter}
+            onChange={(e) => setRuleTypeFilter(e.target.value)}
+            aria-label="Filter by rule type"
             className="text-xs p-2 rounded-xl border border-[#E5EDE6] dark:border-[#29382D] bg-[#F7FAF7] dark:bg-[#141D17] text-[#17211B] dark:text-[#F0FDF4] focus:outline-none focus:border-[#15803D]"
           >
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
+            {ruleTypes.map((ruleType) => (
+              <option key={ruleType} value={ruleType}>
+                {ruleType}
               </option>
             ))}
           </select>
@@ -135,6 +177,32 @@ export default function ComplianceRules() {
             Loading compliance rules...
           </p>
         </div>
+      ) : loadError ? (
+        <div
+          className="p-6 bg-red-50/70 dark:bg-red-950/20 rounded-2xl border border-red-500/20 text-[#DC2626] dark:text-red-400"
+          role="alert"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold">
+                Unable to load compliance rules
+              </h3>
+              <p className="text-xs mt-1">{loadError}</p>
+              <button
+                type="button"
+                onClick={loadRules}
+                disabled={isLoading}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}
+                />
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
       ) : rules.length === 0 ? (
 
         /* Empty State */
@@ -145,20 +213,12 @@ export default function ComplianceRules() {
           </div>
 
           <h3 className="text-base font-bold text-[#17211B] dark:text-[#F0FDF4] font-['Plus_Jakarta_Sans']">
-            Compliance Rules API Not Available
+            No compliance rules configured
           </h3>
 
           <p className="text-xs text-[#647067] dark:text-[#A3B3A6] mt-2 max-w-md mx-auto leading-relaxed">
-            The backend rules module has not been implemented yet. No sample or unverified regulatory rules are being displayed. Once the rules API and database module are developed, verified rules will appear here.
+            The backend returned an empty rules list. No sample or unverified regulatory rules are being displayed.
           </p>
-
-          <div className="mt-5 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[#F7FAF7] dark:bg-[#141D17] border border-[#E5EDE6] dark:border-[#29382D]">
-            <Database className="w-4 h-4 text-[#15803D] dark:text-[#4ADE80]" />
-
-            <span className="text-[11px] font-semibold text-[#647067] dark:text-[#A3B3A6]">
-              Backend endpoint: /api/rules
-            </span>
-          </div>
         </div>
 
       ) : filteredRules.length === 0 ? (
@@ -172,7 +232,7 @@ export default function ComplianceRules() {
           </h3>
 
           <p className="text-xs text-[#647067] dark:text-[#A3B3A6] mt-1">
-            Try changing your search keyword or category.
+            Try changing your search keyword or rule type.
           </p>
         </div>
 
@@ -183,32 +243,37 @@ export default function ComplianceRules() {
 
           {filteredRules.map((rule) => (
             <div
-              key={rule.id}
+              key={rule.rule_id}
               className="bg-white dark:bg-[#19241C] rounded-2xl border border-[#E5EDE6] dark:border-[#29382D] p-5 shadow-[0_2px_8px_rgba(21,128,61,0.03)] hover:border-[#15803D]/40 dark:hover:border-[#4ADE80]/30 transition-all"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
 
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs font-bold text-[#15803D] dark:text-[#4ADE80] bg-[#DCFCE7] dark:bg-[#173D26] px-2 py-0.5 rounded border border-[#E5EDE6] dark:border-[#29382D]">
-                    {rule.ref}
+                    {rule.rule_id}
                   </span>
 
                   <span className="text-xs font-semibold text-[#647067] dark:text-[#A3B3A6]">
-                    {rule.category}
+                    {rule.rule_type}
                   </span>
                 </div>
-
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-[#D97706] border border-amber-500/20">
-                  {rule.riskLevel || 'Standard'} Risk
-                </span>
               </div>
 
               <h3 className="text-sm font-bold text-[#17211B] dark:text-[#F0FDF4] mb-1.5">
                 {rule.name}
               </h3>
 
+              <p className="mb-2 font-mono text-[11px] text-[#647067] dark:text-[#A3B3A6]">
+                Field: {rule.field_name} · Version: {rule.rule_version}
+              </p>
+
               <p className="text-xs text-[#647067] dark:text-[#A3B3A6] leading-relaxed">
                 {rule.description}
+              </p>
+
+              <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-900 dark:text-amber-300">
+                <span className="font-semibold">Legal verification: </span>
+                {rule.legal_verification}
               </p>
             </div>
           ))}
