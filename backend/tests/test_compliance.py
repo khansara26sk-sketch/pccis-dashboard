@@ -1,7 +1,7 @@
 
 from sqlalchemy import func, select
 
-from app.models import ExtractedField, RuleResult
+from app.models import ExtractedField, ImageEvidence, OCRStatus, RuleResult
 
 
 def _create_inspection(client, user, auth_headers):
@@ -183,3 +183,77 @@ def test_compliance_hides_another_users_inspection(
     )
 
     assert response.status_code == 404
+
+
+def test_compliance_treats_whitespace_as_missing(
+    client, create_user, auth_headers, db
+):
+    user = create_user()
+    inspection_id = _create_inspection(client, user, auth_headers)
+
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="product_name",
+            extracted_value="   ",
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/inspections/{inspection_id}/compliance/run",
+        headers=auth_headers(user),
+    )
+
+    assert response.status_code == 200
+
+    product_rule = next(
+        rule for rule in response.json()["rules"]
+        if rule["field_name"] == "product_name"
+    )
+
+    assert product_rule["status"] == "Not Detected"
+    assert product_rule["evidence_text"] == ""
+
+
+def test_compliance_ignores_fields_from_failed_ocr(
+    client, create_user, auth_headers, db
+):
+    user = create_user()
+    inspection_id = _create_inspection(client, user, auth_headers)
+
+    evidence = ImageEvidence(
+        inspection_id=inspection_id,
+        original_filename="failed.png",
+        stored_filename="failed-ocr-test.png",
+        file_path="originals/failed-ocr-test.png",
+        content_type="image/png",
+        ocr_status=OCRStatus.FAILED,
+    )
+    db.add(evidence)
+    db.flush()
+
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            evidence_id=evidence.id,
+            field_name="product_name",
+            extracted_value="Basmati Rice",
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/inspections/{inspection_id}/compliance/run",
+        headers=auth_headers(user),
+    )
+
+    assert response.status_code == 200
+
+    product_rule = next(
+        rule for rule in response.json()["rules"]
+        if rule["field_name"] == "product_name"
+    )
+
+    assert product_rule["status"] == "Manual Review"
+    assert product_rule["evidence_text"] is None
