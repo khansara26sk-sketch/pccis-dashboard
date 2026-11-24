@@ -19,7 +19,12 @@ from app.services.dashboard_service import get_reports_analytics
 
 from fastapi.responses import StreamingResponse
 
-from app.services.pdf_report_service import generate_inspection_pdf
+from app.services.pdf_report_service import (
+    InvalidPDFReport,
+    PDFDependencyUnavailable,
+    PDFGenerationFailed,
+    generate_inspection_pdf,
+)
 
 router = APIRouter(tags=["reports"])
 
@@ -97,6 +102,16 @@ def download_inspection_report_pdf(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
+        ) from None
+    except PDFDependencyUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PDF reporting is unavailable because its rendering dependency is missing.",
+        ) from None
+    except (InvalidPDFReport, PDFGenerationFailed):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not generate the inspection report PDF.",
         ) from None
 
 @router.get(

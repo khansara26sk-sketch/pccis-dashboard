@@ -37,3 +37,8 @@ python -m app.scripts.create_admin --email you@college.edu --full-name "Your Nam
 Endpoints: `POST /api/auth/register`, `/login`, `/google`, `/logout`, `GET /api/auth/me`,
 `GET /api/users` (Admin), `PATCH /api/users/{id}/role` (Admin).
 Send the token as `Authorization: Bearer <access_token>`.
+
+Inspection reports are available to the inspection owner, Senior Officers, and Admins:
+`GET /api/inspections/{id}/report` returns JSON and
+`GET /api/inspections/{id}/report/pdf` downloads an `application/pdf` file.
+ReportLab is installed with the backend dependencies in `requirements.txt`.
