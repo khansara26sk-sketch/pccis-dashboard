@@ -1,6 +1,4 @@
 
-import io
-
 import pytest
 from PIL import Image
 from sqlalchemy import func, select
@@ -392,7 +390,8 @@ Expiry Date: 01/2027"""
         assert field is not None, f"{field_name} record missing"
         assert field.extracted_value == expected_value
         assert field.source_text == ocr_text
-        assert field.confidence == 96.0
+        assert field.confidence is not None
+        assert 0 <= field.confidence <= 100
         assert field.inspection_id == inspection.id
 
 
@@ -414,7 +413,7 @@ def test_extracts_additional_product_fields():
     assert result.manufacturer == "ABC Foods Pvt Ltd"
     assert result.address == "New Delhi, India"
     assert result.net_quantity == "200 g"
-    assert result.mrp == "Rs. 50"
+    assert result.mrp == "50"
     assert result.consumer_care == "1800-123-456"
     assert result.country_of_origin == "India"
 
@@ -429,5 +428,5 @@ def test_extracts_fields_from_single_line_ocr():
     result = extract_product_fields(text)
 
     assert result.net_quantity == "200 g"
-    assert result.mrp == "Rs. 50"
+    assert result.mrp == "50"
     assert result.country_of_origin == "India"

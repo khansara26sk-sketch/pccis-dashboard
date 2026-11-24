@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { fetchInspectionEvidence } from '../../services/inspectionService';
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import {
   X,
   Printer,
@@ -55,36 +55,42 @@ export default function InspectionDetailDrawer({
   };
 
   const handleViewOCR = async () => {
-  try {
-    const response = await fetchInspectionEvidence(inspection.id);
-    const evidenceList = Array.isArray(response.data)
-      ? response.data
-      : [];
+    try {
+      const response = await fetchInspectionEvidence(inspection.id);
 
-    const completedEvidence = evidenceList
-      .filter((item) => item.ocr_status === 'completed')
-      .sort(
-        (a, b) =>
-          new Date(b.uploaded_at) - new Date(a.uploaded_at)
+      const evidenceList = Array.isArray(response.data)
+        ? response.data
+        : Array.isArray(response.data?.items)
+          ? response.data.items
+          : Array.isArray(response.data?.evidence)
+            ? response.data.evidence
+            : [];
+
+      if (evidenceList.length === 0) {
+        alert('No evidence image has been uploaded for this inspection.');
+        return;
+      }
+
+      const sortedEvidence = [...evidenceList].sort(
+        (a, b) => new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0) || (b.id - a.id)
       );
 
-    if (completedEvidence.length === 0) {
-      alert('No completed OCR result is available for this inspection.');
-      return;
+      // Prefer latest completed evidence; if none completed yet, pick the latest evidence
+      const completedEvidence = sortedEvidence.filter(
+        (item) => String(item.ocr_status).toLowerCase() === 'completed'
+      );
+      const targetEvidence = completedEvidence.length > 0 ? completedEvidence[0] : sortedEvidence[0];
+
+      onClose();
+
+      navigate(
+        `/ocr-results?inspectionId=${inspection.id}&evidenceId=${targetEvidence.id}`
+      );
+    } catch (error) {
+      console.error('Failed to fetch inspection evidence:', error);
+      alert('Unable to load inspection evidence. Please try again.');
     }
-
-    const latestEvidence = completedEvidence[0];
-
-    onClose();
-
-    navigate(
-      `/ocr-results?inspectionId=${inspection.id}&evidenceId=${latestEvidence.id}`
-    );
-  } catch (error) {
-    console.error('Failed to fetch inspection evidence:', error);
-    alert('Unable to load inspection evidence. Please try again.');
-  }
-};
+  };
 
   const details = [
     {

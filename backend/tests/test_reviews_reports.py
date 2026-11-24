@@ -206,3 +206,44 @@ def test_senior_officer_can_view_report(
 
     assert response.status_code == 200
     assert response.json()["inspection"]["id"] == inspection_id
+
+
+def test_download_inspection_report_pdf(
+    client, create_user, auth_headers
+):
+    """Verify inspection report can be downloaded as a valid PDF document."""
+    inspector = create_user(email="pdf-inspector@example.com")
+    inspection_id = create_inspection(client, inspector, auth_headers)
+
+    response = client.get(
+        f"/api/inspections/{inspection_id}/report/pdf",
+        headers=auth_headers(inspector),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment; filename=" in response.headers["content-disposition"]
+    # PDF magic byte signature
+    assert response.content.startswith(b"%PDF")
+
+
+def test_senior_officer_can_view_reports_analytics(
+    client, create_user, auth_headers
+):
+    """Verify Senior Officer can access system-wide reports analytics."""
+    senior = create_user(
+        email="senior-reports@example.com",
+        role=UserRole.SENIOR_OFFICER,
+    )
+
+    response = client.get(
+        "/api/reports",
+        params={"range": "Last 30 Days"},
+        headers=auth_headers(senior),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "summary" in body
+    assert "totalAudited" in body["summary"]
+    assert "trends" in body

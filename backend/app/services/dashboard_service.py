@@ -9,10 +9,10 @@ from app.models.enums import OverallResult, ReviewStatus
 
 
 def get_dashboard_stats(db: Session, user):
-    # Admin can see all inspections; other users see only their own.
+    # Admin and Senior Officer can see all inspections; Inspectors see only their own.
     filters = []
 
-    if user.role != UserRole.ADMIN:
+    if user.role not in (UserRole.SENIOR_OFFICER, UserRole.ADMIN):
         filters.append(Inspection.inspector_id == user.id)
 
     def count_records(*extra_filters):
@@ -90,7 +90,7 @@ def get_reports_analytics(db: Session, user, range_label: str, category: str):
         Inspection.overall_result.is_not(None),
     ]
 
-    if user.role != UserRole.ADMIN:
+    if user.role not in (UserRole.SENIOR_OFFICER, UserRole.ADMIN):
         filters.append(Inspection.inspector_id == user.id)
 
     statement = (

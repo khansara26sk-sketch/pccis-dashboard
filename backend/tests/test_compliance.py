@@ -257,3 +257,115 @@ def test_compliance_ignores_fields_from_failed_ocr(
 
     assert product_rule["status"] == "Manual Review"
     assert product_rule["evidence_text"] is None
+
+
+def test_compliance_prioritizes_manually_corrected_fields(
+    client, create_user, auth_headers, db
+):
+    """Verify compliance checks use manually corrected field values over raw OCR values."""
+    user = create_user()
+    inspection_id = _create_inspection(client, user, auth_headers)
+
+    # 1. Add older raw OCR field
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="mrp",
+            extracted_value="10.OO",
+            manually_corrected=False,
+        )
+    )
+    # 2. Add manually corrected field
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="mrp",
+            extracted_value="10.00",
+            manually_corrected=True,
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/inspections/{inspection_id}/compliance/run",
+        headers=auth_headers(user),
+    )
+    assert response.status_code == 200
+
+    mrp_rule = next(
+        rule for rule in response.json()["rules"]
+        if rule["field_name"] == "mrp"
+    )
+    assert mrp_rule["status"] == "Manual Review"
+    assert mrp_rule["evidence_text"] == "10.00"
+
+
+def test_compliance_packaging_date_satisfied_by_packed_date(
+    client, create_user, auth_headers, db
+):
+    """Verify packaging_date check is satisfied by packed_date under Rule 6(1)(d)."""
+    user = create_user()
+    inspection_id = _create_inspection(client, user, auth_headers)
+
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="packed_date",
+            extracted_value="29-7-20",
+            manually_corrected=True,
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/inspections/{inspection_id}/compliance/run",
+        headers=auth_headers(user),
+    )
+    assert response.status_code == 200
+
+    pkg_rule = next(
+        rule for rule in response.json()["rules"]
+        if rule["field_name"] == "packaging_date"
+    )
+    assert pkg_rule["status"] == "Manual Review"
+    assert pkg_rule["evidence_text"] == "29-7-20"
+
+
+def test_compliance_country_of_origin_conditional_for_domestic_commodity(
+    client, create_user, auth_headers, db
+):
+    """Verify missing country of origin is conditional (Manual Review) when domestic manufacturer is present."""
+    user = create_user()
+    inspection_id = _create_inspection(client, user, auth_headers)
+
+    # Add manufacturer and domestic address
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="manufacturer",
+            extracted_value="PARLE PRODUCTS PVT. LTD.",
+            manually_corrected=True,
+        )
+    )
+    db.add(
+        ExtractedField(
+            inspection_id=inspection_id,
+            field_name="address",
+            extracted_value="North Level Crossing, Vile Parle, Mumbai",
+            manually_corrected=True,
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"/api/inspections/{inspection_id}/compliance/run",
+        headers=auth_headers(user),
+    )
+    assert response.status_code == 200
+
+    coo_rule = next(
+        rule for rule in response.json()["rules"]
+        if rule["field_name"] == "country_of_origin"
+    )
+    assert coo_rule["status"] == "Manual Review"
+    assert "mandatory for imported products" in coo_rule["explanation"]

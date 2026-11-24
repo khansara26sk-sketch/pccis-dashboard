@@ -85,11 +85,14 @@ def get_structured_fields(
         )
     ).all()
 
+    field_confidences = {name: None for name in field_names}
+
     for record in records:
         name = record.field_name
         value = record.extracted_value
 
         fields[name] = value
+        field_confidences[name] = record.confidence
 
         if record.manually_corrected:
             field_statuses[name] = (
@@ -104,4 +107,5 @@ def get_structured_fields(
         "status": evidence.ocr_status,
         "fields": fields,
         "field_statuses": field_statuses,
+        "field_confidences": field_confidences,
     }

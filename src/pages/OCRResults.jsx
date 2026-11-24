@@ -17,7 +17,12 @@ import EmptyState from '../components/common/EmptyState';
 import ProductFields from '../components/inspection/ProductFields';
 import { MOCK_OCR_RESPONSE } from '../services/mockOcrResponse';
 import { MOCK_PRODUCT_FIELDS_PREVIEW } from '../services/mockProductFields';
-import { fetchOcrResult } from '../services/ocrService';
+import { fetchInspectionEvidence } from '../services/inspectionService';
+import {
+  fetchOcrResult,
+  fetchExtractedFields,
+  updateExtractedFields,
+} from '../services/ocrService';
 
 const cardClass =
   'bg-white dark:bg-[#19241C] rounded-2xl border border-[#E5EDE6] dark:border-[#29382D] shadow-[0_2px_8px_rgba(21,128,61,0.03)]';
@@ -25,6 +30,7 @@ const titleClass =
   'text-sm font-bold text-[#17211B] dark:text-[#F0FDF4]';
 const secondaryTextClass =
   'text-xs text-[#647067] dark:text-[#A3B3A6]';
+
 
 const parseIdentifier = (value) => {
   if (!value || !/^\d+$/.test(value)) {
@@ -161,42 +167,167 @@ export default function OCRResults() {
   const [ocrResult, setOcrResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+
+  const [extractedFields, setExtractedFields] = useState(null);
+  const [fieldsError, setFieldsError] = useState(null);
+
+  const [isSavingFields, setIsSavingFields] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
+
   const requestControllerRef = useRef(null);
 
-  const loadOcrResult = useCallback(async () => {
-    if (!hasIdentifiers) return;
-    if (
-      requestControllerRef.current &&
-      !requestControllerRef.current.signal.aborted
-    ) {
+
+const loadOcrResult = useCallback(async () => {
+  if (!hasIdentifiers) return;
+  if (
+    requestControllerRef.current &&
+    !requestControllerRef.current.signal.aborted
+  ) {
+    return;
+  }
+
+  const controller = new AbortController();
+  requestControllerRef.current = controller;
+
+  setIsLoading(true);
+  setLoadError(null);
+  setFieldsError(null);
+  setOcrResult(null);
+  setExtractedFields(null);
+
+  try {
+    const result = await fetchOcrResult(inspectionId, evidenceId, {
+      signal: controller.signal,
+    });
+
+    if (controller.signal.aborted) return;
+
+    setOcrResult(result);
+
+    if (result.status === 'completed') {
+      try {
+        const fields = await fetchExtractedFields(
+          inspectionId,
+          evidenceId,
+          { signal: controller.signal }
+        );
+
+        if (controller.signal.aborted) return;
+
+        setExtractedFields(fields);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        console.error('Failed to load extracted fields:', error);
+        setFieldsError(
+          error.message || 'Product fields could not be loaded.'
+        );
+      }
+    }
+  } catch (error) {
+    if (controller.signal.aborted) return;
+
+    console.error('Failed to load OCR results:', error);
+    setLoadError(
+      error.message || 'The OCR result could not be loaded. Please try again.'
+    );
+  } finally {
+    if (!controller.signal.aborted) {
+      setIsLoading(false);
+
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+      }
+    }
+  }
+}, [evidenceId, hasIdentifiers, inspectionId]);
+
+
+const handleSaveCorrections = async (draftValues) => {
+  if (!extractedFields?.fields) return;
+
+  setIsSavingFields(true);
+  setSaveMessage('');
+  setSaveError('');
+
+  try {
+    const corrections = {};
+
+    Object.entries(draftValues).forEach(([key, value]) => {
+      const originalValue = extractedFields.fields[key] ?? '';
+      const correctedValue = value.trim();
+
+      if (correctedValue !== originalValue.trim()) {
+        corrections[key] = correctedValue || null;
+      }
+    });
+
+    if (Object.keys(corrections).length === 0) {
+      setSaveMessage('No changes to save.');
       return;
     }
 
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setIsLoading(true);
-    setLoadError(null);
-    setOcrResult(null);
+    const updatedFields = await updateExtractedFields(
+      inspectionId,
+      evidenceId,
+      corrections
+    );
 
-    try {
-      const result = await fetchOcrResult(inspectionId, evidenceId, {
-        signal: controller.signal,
-      });
-      setOcrResult(result);
-    } catch (error) {
-      if (controller.signal.aborted) return;
+    setExtractedFields(updatedFields);
+    setSaveMessage('Corrections saved successfully.');
+  } catch (error) {
+    console.error('Failed to save corrections:', error);
+    setSaveError(error.message || 'Could not save corrections.');
+  } finally {
+    setIsSavingFields(false);
+  }
+};
 
-      console.error('Failed to load OCR results:', error);
-      setLoadError(error.message || 'The OCR result could not be loaded. Please try again.');
-    } finally {
-      if (!controller.signal.aborted) {
-        setIsLoading(false);
-        if (requestControllerRef.current === controller) {
-          requestControllerRef.current = null;
+
+
+  // If only inspectionId is provided in URL, auto-resolve the latest evidenceId
+  useEffect(() => {
+    if (isDemoMode || !inspectionId || evidenceId) return;
+
+    let isMounted = true;
+    (async () => {
+      try {
+        const response = await fetchInspectionEvidence(inspectionId);
+        const evidenceList = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray(response.data?.items)
+            ? response.data.items
+            : [];
+        if (evidenceList.length > 0 && isMounted) {
+          const sorted = [...evidenceList].sort(
+            (a, b) =>
+              new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0) ||
+              b.id - a.id
+          );
+          const target =
+            sorted.find(
+              (e) => String(e.ocr_status).toLowerCase() === 'completed'
+            ) || sorted[0];
+
+          setSearchParams(
+            (prev) => {
+              const updated = new URLSearchParams(prev);
+              updated.set('evidenceId', String(target.id));
+              return updated;
+            },
+            { replace: true }
+          );
         }
+      } catch (err) {
+        console.error('Failed to resolve evidence for inspection:', err);
       }
-    }
-  }, [evidenceId, hasIdentifiers, inspectionId]);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [evidenceId, inspectionId, isDemoMode, setSearchParams]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -227,6 +358,17 @@ export default function OCRResults() {
   const isFailed =
     normalizedStatus === 'failed' || normalizedStatus === 'error';
 
+  // Automatically poll while OCR is pending / processing
+  useEffect(() => {
+    if (!hasIdentifiers || isDemoMode || !isProcessing) return undefined;
+
+    const timer = setTimeout(() => {
+      loadOcrResult();
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [hasIdentifiers, isDemoMode, isProcessing, loadOcrResult]);
+
   return (
     <div className="space-y-6">
       <header className={`${cardClass} flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6`}>
@@ -238,7 +380,13 @@ export default function OCRResults() {
             OCR Results
           </h2>
           <p className={`${secondaryTextClass} mt-1`}>
-            Review text extracted from a package label image.
+            {hasIdentifiers ? (
+              <span>
+                Viewing OCR output for <strong>Inspection #{inspectionId}</strong> (Evidence #{evidenceId})
+              </span>
+            ) : (
+              'Review text extracted from a package label image.'
+            )}
           </p>
         </div>
         {isDemoMode ? (
@@ -420,16 +568,41 @@ export default function OCRResults() {
           </section>
 
           <ProductFields
-            items={isDemoMode ? MOCK_PRODUCT_FIELDS_PREVIEW : []}
+            items={
+              isDemoMode
+                ? MOCK_PRODUCT_FIELDS_PREVIEW
+                : extractedFields?.fields
+                  ? Object.entries(extractedFields.fields).map(([key, value]) => ({
+                      key,
+                      label: key
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, (char) => char.toUpperCase()),
+                      value: value ?? '',
+                      status: extractedFields.field_statuses?.[key] ?? 'not_detected',
+                      confidence: extractedFields.field_confidences?.[key] ?? null,
+                    }))
+                  : []
+            }
+            isLoading={isLoading && !ocrResult}
             isProcessing={isProcessing}
             error={
               isFailed
                 ? ocrResult.error ||
                   'Product fields are unavailable because OCR processing failed.'
-                : null
+                : fieldsError
             }
             isPreview={isDemoMode}
+            onSave={handleSaveCorrections}
+            isSaving={isSavingFields}
           />
+
+{saveMessage && (
+  <p className="mt-2 text-sm text-green-600">{saveMessage}</p>
+)}
+
+{saveError && (
+  <p className="mt-2 text-sm text-red-600">{saveError}</p>
+)}
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section

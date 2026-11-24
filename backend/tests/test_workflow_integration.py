@@ -1,4 +1,5 @@
-from app.models import UserRole
+from sqlalchemy import select
+from app.models import AuditEvent, UserRole
 from app.services import evidence_service
 from app.services.ocr_service import OCRResult
 from tests.helpers import make_image
@@ -10,6 +11,7 @@ def test_complete_inspection_workflow(
     auth_headers,
     storage_settings,
     monkeypatch,
+    db,
 ):
     # 1. Create inspector and senior officer
     inspector = create_user(email="workflow-inspector@example.com")
@@ -72,7 +74,30 @@ def test_complete_inspection_workflow(
 
     assert ocr_response.status_code == 200
 
-    # 6. Run compliance screening
+    # 5b. Inspector reviews structured fields and submits manual corrections
+    fields_response = client.get(
+        f"/api/inspections/{inspection_id}/evidence/{evidence_id}/fields",
+        headers=inspector_headers,
+    )
+    assert fields_response.status_code == 200
+    assert fields_response.json()["fields"]["product_name"] == "Basmati Rice"
+
+    correction_response = client.patch(
+        f"/api/inspections/{inspection_id}/evidence/{evidence_id}/fields",
+        json={
+            "net_quantity": "1 kg",
+            "mrp": "120.00",
+            "manufacturer": "Bharat Rice Mills Pvt Ltd",
+            "address": "Karnal, Haryana-132001",
+            "consumer_care": "care@bharatrice.com",
+        },
+        headers=inspector_headers,
+    )
+    assert correction_response.status_code == 200
+    assert correction_response.json()["fields"]["net_quantity"] == "1 kg"
+    assert correction_response.json()["field_statuses"]["net_quantity"] == "verified"
+
+    # 6. Run compliance screening (uses manually corrected fields)
     compliance_response = client.post(
         f"/api/inspections/{inspection_id}/compliance/run",
         headers=inspector_headers,
@@ -129,3 +154,25 @@ def test_complete_inspection_workflow(
     assert report["extracted_fields"]
     assert len(report["compliance_results"]) == 8
     assert len(report["reviews"]) == 1
+
+    # 11. Download PDF report
+    pdf_response = client.get(
+        f"/api/inspections/{inspection_id}/report/pdf",
+        headers=inspector_headers,
+    )
+    assert pdf_response.status_code == 200
+    assert pdf_response.headers["content-type"] == "application/pdf"
+    assert pdf_response.content.startswith(b"%PDF")
+
+    # 12. Verify audit events recorded in database
+    audit_events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.inspection_id == inspection_id)
+        .order_by(AuditEvent.id)
+    ).all()
+    actions = [e.action for e in audit_events]
+    assert "inspection.created" in actions
+    assert "evidence.uploaded" in actions
+    assert "evidence.ocr_completed" in actions
+    assert "compliance.checks_completed" in actions
+    assert "inspection.review_submitted" in actions

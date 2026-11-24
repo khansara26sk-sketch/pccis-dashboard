@@ -270,9 +270,9 @@ def get_structured_fields(
 def update_structured_fields(
     inspection_id: int,
     evidence_id: int,
+    current_user: CurrentUser,
+    db: DbSession,
     corrections: dict[str, str | None] = Body(...),
-    current_user: CurrentUser = None,
-    db: DbSession = None,
 ):
     inspection = _load_inspection(db, current_user, inspection_id)
     evidence = _load_evidence(db, inspection, evidence_id)

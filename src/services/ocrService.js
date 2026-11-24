@@ -160,3 +160,61 @@ export const fetchOcrResult = async (
 
   return validateOcrResponse(response?.data, inspectionId, evidenceId);
 };
+
+
+export const fetchExtractedFields = async (
+  inspectionId,
+  evidenceId,
+  { signal } = {}
+) => {
+  if (!isPositiveInteger(inspectionId) || !isPositiveInteger(evidenceId)) {
+    throw new Error(
+      'A valid inspection and evidence identifier are required to load extracted fields.'
+    );
+  }
+
+  try {
+    const response = await apiClient.get(
+      `/api/inspections/${inspectionId}/evidence/${evidenceId}/fields`,
+      { signal }
+    );
+
+    const data = response?.data;
+
+    if (
+      !data ||
+      data.inspection_id !== inspectionId ||
+      data.evidence_id !== evidenceId ||
+      !data.fields ||
+      !data.field_statuses
+    ) {
+      throw new Error('The backend returned an unexpected extracted-fields response.');
+    }
+
+    return data;
+  } catch (error) {
+    if (isCancellation(error)) {
+      throw error;
+    }
+
+    if (error.message?.includes('unexpected extracted-fields response')) {
+      throw error;
+    }
+
+    throw toUserFacingApiError(error);
+  }
+};
+
+
+export const updateExtractedFields = async (
+  inspectionId,
+  evidenceId,
+  corrections
+) => {
+  const response = await apiClient.patch(
+    `/api/inspections/${inspectionId}/evidence/${evidenceId}/fields`,
+    corrections
+  );
+
+  return response.data;
+};

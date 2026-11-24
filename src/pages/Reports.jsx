@@ -56,9 +56,10 @@ export default function Reports() {
       setReportData(res.data);
     } catch (err) {
       console.warn('[Reports] API query failed:', err.message);
-      setIsOffline(true);
+      const isNetwork = Boolean(err.isNetworkError || !err.status);
+      setIsOffline(isNetwork);
       setErrorMessage(
-        err.isNetworkError
+        isNetwork
           ? 'Cannot reach backend at http://127.0.0.1:8000. Start FastAPI server to generate live reports.'
           : err.message || 'Failed to fetch reporting analytics.'
       );

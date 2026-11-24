@@ -1,6 +1,6 @@
 
 """Evidence upload and preprocessing workflow: validate, store original, record, preprocess and OCR."""
-
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
@@ -42,7 +42,7 @@ from app.services.storage_service import (
 from app.utils.files import sanitize_display_filename
 
 READ_CHUNK_BYTES = 1024 * 1024
-
+logger = logging.getLogger(__name__)
 
 class EvidenceNotFound(Exception):
     pass
@@ -131,6 +131,7 @@ def run_ocr(
     user: User,
     image_path: Path,
 ) -> None:
+    print("DEBUG TEST: run_ocr started", flush=True)
     """Extract text from the processed image and save its OCR result."""
 
     evidence.ocr_status = OCRStatus.PENDING
@@ -148,6 +149,10 @@ def run_ocr(
     try:
         result = extract_text(image_path, settings)
     except OCRProcessingError:
+        logger.exception(
+        "OCR failed for evidence %s",
+        evidence.id,
+    )
         evidence.ocr_status = OCRStatus.FAILED
         evidence.ocr_error = "OCR processing failed"
 
@@ -187,6 +192,17 @@ def run_ocr(
     if result.candidate_results
     else result.text
 )
+    print("\n--- FIELD EXTRACTION DEBUG ---", flush=True)
+
+    for index, candidate in enumerate(result.candidate_results):
+        print(f"\nCANDIDATE {index + 1}:", flush=True)
+        print(candidate.text, flush=True)
+        print("CONFIDENCE:", candidate.confidence, flush=True)
+
+    print("\nFINAL EXTRACTED FIELDS:", flush=True)
+    print(product_fields, flush=True)
+
+    print("DEBUG TEST: evidence_service reached field extraction", flush=True)
 
     structured_fields = {
     "product_name": product_fields.product_name,
@@ -223,7 +239,7 @@ def run_ocr(
 
         field_record.extracted_value = field_value
         field_record.source_text = result.text
-        field_record.confidence = result.confidence
+        field_record.confidence = product_fields.field_confidences.get(field_name)
 
     evidence.ocr_status = OCRStatus.COMPLETED
     evidence.ocr_error = None
@@ -345,16 +361,32 @@ def upload_evidence(
         db.commit()
 
     except Exception:
+        logger.exception(
+            "Unexpected processing error for evidence %s",
+            evidence.id,
+        )
         db.rollback()
         delete_quietly(stored_path)
         raise
 
-    run_preprocessing(
-        db,
-        settings=settings,
-        evidence=evidence,
-        user=user,
-    )
+    try:
+        run_preprocessing(
+            db,
+            settings=settings,
+            evidence=evidence,
+            user=user,
+        )
+    except Exception:
+        db.rollback()
+
+        evidence = db.get(ImageEvidence, evidence.id)
+
+        if evidence is not None:
+            evidence.preprocessing_status = PreprocessingStatus.FAILED
+            evidence.preprocessing_error = "Image processing failed"
+            evidence.ocr_status = OCRStatus.FAILED
+            evidence.ocr_error = "OCR unavailable because image processing failed"
+            db.commit()
 
     return evidence
 
@@ -388,9 +420,17 @@ def run_preprocessing(
         )
 
     except PreprocessingError as exc:
+        logger.exception(
+            "Image preprocessing failed for evidence %s",
+            evidence.id,
+        )
         error = str(exc)
 
     except (OSError, StorageError):
+        logger.exception(
+            "Image file operation failed for evidence %s",
+            evidence.id,
+        )
         error = "Preprocessing failed (could not read or write image files)"
 
     else:

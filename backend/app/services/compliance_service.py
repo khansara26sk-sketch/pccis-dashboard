@@ -42,6 +42,7 @@ def _get_extracted_fields(
             ),
         )
         .order_by(
+            ExtractedField.manually_corrected.desc(),
             ExtractedField.created_at.desc(),
             ExtractedField.id.desc(),
         )
@@ -85,18 +86,18 @@ def run_compliance_checks(
     extracted_fields = _get_extracted_fields(db, inspection.id)
     has_extraction_records = bool(extracted_fields)
 
-    # Map OCR field names to compliance rule field names.
-    extracted_fields["manufacturer_packer"] = (
-    extracted_fields.get("manufacturer")
-)
+    # Map OCR field names to compliance rule field names without overriding manual corrections.
+    if not extracted_fields.get("manufacturer_packer"):
+        extracted_fields["manufacturer_packer"] = extracted_fields.get("manufacturer")
 
-    extracted_fields["manufacturer_address"] = (
-    extracted_fields.get("address")
-)
+    if not extracted_fields.get("manufacturer_address"):
+        extracted_fields["manufacturer_address"] = extracted_fields.get("address")
 
-    extracted_fields["packaging_date"] = (
-    extracted_fields.get("manufacturing_date")
-)
+    if not extracted_fields.get("packaging_date"):
+        extracted_fields["packaging_date"] = (
+            extracted_fields.get("manufacturing_date")
+            or extracted_fields.get("packed_date")
+        )
 
     has_usable_extraction = any(
     value is not None and str(value).strip()

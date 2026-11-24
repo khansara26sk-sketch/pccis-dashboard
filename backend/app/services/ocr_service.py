@@ -39,6 +39,45 @@ class OCRProcessingError(Exception):
     """Raised when OCR cannot process an image."""
 
 
+def _build_ocr_variants(image: Image.Image) -> list[np.ndarray]:
+    """Generate general-purpose image variants for OCR."""
+
+    rgb = np.array(image)
+
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+
+    enlarged = cv2.resize(
+        gray,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    clahe = cv2.createCLAHE(
+        clipLimit=2.0,
+        tileGridSize=(8, 8),
+    ).apply(enlarged)
+
+    adaptive = cv2.adaptiveThreshold(
+        clahe,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        31,
+        11,
+    )
+
+    otsu = cv2.threshold(
+        clahe,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    )[1]
+
+    return [rgb, enlarged, clahe, adaptive, otsu]
+
+
 def extract_text(image_path: Path, settings: Settings) -> OCRResult:
     """Extract text using multiple Tesseract configurations."""
 
@@ -56,57 +95,63 @@ def extract_text(image_path: Path, settings: Settings) -> OCRResult:
             ]
 
             results = []
+            variants = _build_ocr_variants(image)
 
-            for config in configurations:
-                data = pytesseract.image_to_data(
-                    image,
-                    lang="eng",
-                    config=config,
-                    output_type=Output.DICT,
-                )
+            print(f"TOTAL OCR VARIANTS: {len(variants)}", flush=True)
 
-                words = []
-                confidences = []
+            for variant_index, variant in enumerate(variants):
+                for config in configurations:
+                    data = pytesseract.image_to_data(
+                        variant,
+                        lang="eng",
+                        config=config,
+                        output_type=Output.DICT,
+                    )
 
-                for word, raw_confidence in zip(
-                    data.get("text", []),
-                    data.get("conf", []),
-                ):
-                    word = word.strip()
+                    words = []
+                    confidences = []
 
-                    if not word:
-                        continue
+                    for word, raw_confidence in zip(
+                        data.get("text", []),
+                        data.get("conf", []),
+                    ):
+                        word = word.strip()
 
-                    try:
-                        confidence = float(raw_confidence)
-                    except (TypeError, ValueError):
-                        continue
+                        if not word:
+                            continue
 
-                    if confidence < 0:
-                        continue
+                        try:
+                            confidence = float(raw_confidence)
+                        except (TypeError, ValueError):
+                            continue
 
-                    words.append(word)
-                    confidences.append(confidence)
+                        if confidence < 0:
+                            continue
 
-                text = " ".join(words).strip()
+                        words.append(word)
+                        confidences.append(confidence)
 
-                confidence = (
-                    sum(confidences) / len(confidences)
-                    if confidences else None
-                )
+                    text = " ".join(words).strip()
 
-                results.append(
-    OCRCandidate(
-        text=text,
-        confidence=confidence,
-    )
-)
+                    confidence = (
+                        sum(confidences) / len(confidences)
+                        if confidences else None
+                    )
 
-                print(
-                    f"\nOCR CONFIG: {config}"
-                    f"\nTEXT: {text}"
-                    f"\nCONFIDENCE: {confidence}"
-                )
+                    results.append(
+                        OCRCandidate(
+                            text=text,
+                            confidence=confidence,
+                        )
+                    )
+
+                    print(
+                        f"\nVARIANT: {variant_index}"
+                        f"\nOCR CONFIG: {config}"
+                        f"\nTEXT: {text}"
+                        f"\nCONFIDENCE: {confidence}",
+                        flush=True,
+                    )
 
         valid_results = [
             result for result in results
@@ -142,4 +187,3 @@ def extract_text(image_path: Path, settings: Settings) -> OCRResult:
         raise OCRProcessingError(
             "OCR processing failed"
         ) from exc
-
