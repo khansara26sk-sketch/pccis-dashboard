@@ -15,7 +15,6 @@ from PIL import Image, ImageOps
 
 from app.config import PreprocessingSettings
 
-
 class ImageError(Exception):
     pass
 
@@ -133,7 +132,9 @@ def preprocess_image(data: bytes, cfg: PreprocessingSettings) -> PreprocessResul
     except PreprocessingError:
         raise
     except Exception as exc:
-        raise PreprocessingError(f"Preprocessing failed ({type(exc).__name__})") from exc
+        raise PreprocessingError(
+        f"Preprocessing failed ({type(exc).__name__}): {exc}"
+    ) from exc
 
 
 def _preprocess(data: bytes, cfg: PreprocessingSettings) -> PreprocessResult:

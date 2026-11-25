@@ -377,13 +377,19 @@ def upload_evidence(
             user=user,
         )
     except Exception:
+        logger.exception(
+        "Unexpected preprocessing failure for evidence %s",
+        evidence.id,
+    )
         db.rollback()
 
         evidence = db.get(ImageEvidence, evidence.id)
 
         if evidence is not None:
             evidence.preprocessing_status = PreprocessingStatus.FAILED
-            evidence.preprocessing_error = "Image processing failed"
+            evidence.preprocessing_error = (
+    f"Unexpected error ({type(exc).__name__}): {exc}"
+)[:300]
             evidence.ocr_status = OCRStatus.FAILED
             evidence.ocr_error = "OCR unavailable because image processing failed"
             db.commit()

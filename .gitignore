@@ -1,6 +1,4 @@
-
-@'
-# Node.js
+﻿# Node.js
 node_modules/
 dist/
 dist-ssr/
@@ -20,6 +18,7 @@ lerna-debug.log*
 
 # Python virtual environments
 .venv/
+.venv-paddle/
 venv/
 env/
 ENV/
@@ -36,6 +35,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 *.bak
+*.backup.py
 
 # Uploaded evidence
 backend/uploads/
@@ -47,6 +47,9 @@ backend-phase2-backup/
 phase3-review/
 backend-phase3-full.zip
 phase3-app-diff.txt
+*.phase2-backup
+*.before-list-api
+*.before-api
 
 # Editor files
 .vscode/*
@@ -64,10 +67,3 @@ phase3-app-diff.txt
 htmlcov/
 *.tmp
 *.temp
-'@ | Set-Content -Encoding utf8 .gitignore
-
-# Local backup snapshots
-*.phase2-backup
-*.before-list-api
-
-*.before-api

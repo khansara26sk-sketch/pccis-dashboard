@@ -48,10 +48,10 @@ apiClient.interceptors.response.use(
   (error) => {
     const status = error.response ? error.response.status : null;
     const message = error.response?.data?.detail || error.message || 'An unexpected API error occurred';
-    
+
     // Log API warning cleanly
     console.warn(`[PCCIS API] ${error.config?.method?.toUpperCase()} ${error.config?.url} returned ${status}: ${message}`);
-    
+
     return Promise.reject({
       status,
       message,
